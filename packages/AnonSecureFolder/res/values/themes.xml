@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Always dark, whatever the system setting: plain widgets, Whisker's colours. -->
+<resources>
+    <style name="Anon" parent="@android:style/Theme.DeviceDefault">
+        <item name="android:colorBackground">@color/anon_bg</item>
+        <item name="android:windowBackground">@color/anon_bg</item>
+        <item name="android:colorPrimary">@color/anon_bg</item>
+        <item name="android:colorPrimaryDark">@color/anon_bg</item>
+        <item name="android:colorAccent">@color/anon_accent</item>
+        <item name="android:colorControlActivated">@color/anon_accent</item>
+        <item name="android:colorControlNormal">@color/anon_muted</item>
+        <item name="android:colorControlHighlight">#337b6cf6</item>
+        <item name="android:textColorPrimary">@color/anon_text</item>
+        <item name="android:textColorSecondary">@color/anon_muted</item>
+        <item name="android:textColorHint">@color/anon_muted</item>
+        <item name="android:textColorHighlight">#557b6cf6</item>
+        <item name="android:statusBarColor">@color/anon_bg</item>
+        <item name="android:navigationBarColor">@color/anon_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:actionBarStyle">@style/Anon.ActionBar</item>
+        <item name="android:buttonStyle">@style/Anon.Button</item>
+        <item name="android:editTextStyle">@style/Anon.Field</item>
+        <item name="android:alertDialogTheme">@style/Anon.Dialog</item>
+        <item name="android:popupMenuStyle">@style/Anon.Popup</item>
+    </style>
+
+    <style name="Anon.ActionBar" parent="@android:style/Widget.DeviceDefault.ActionBar.Solid">
+        <item name="android:background">@color/anon_bg</item>
+        <item name="android:elevation">0dp</item>
+        <item name="android:titleTextStyle">@style/Anon.ActionBar.Title</item>
+    </style>
+
+    <style name="Anon.ActionBar.Title" parent="@android:style/TextAppearance.DeviceDefault.Widget.ActionBar.Title">
+        <item name="android:textColor">@color/anon_text</item>
+        <item name="android:textSize">20sp</item>
+    </style>
+
+    <style name="Anon.Popup" parent="@android:style/Widget.DeviceDefault.PopupMenu">
+        <item name="android:popupBackground">@drawable/anon_popup</item>
+    </style>
+
+    <!-- Main action: filled, rounded, sentence case. -->
+    <style name="Anon.Button" parent="@android:style/Widget.DeviceDefault.Button">
+        <item name="android:background">@drawable/anon_button</item>
+        <item name="android:textColor">@color/anon_on_accent</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:minHeight">52dp</item>
+        <item name="android:paddingStart">20dp</item>
+        <item name="android:paddingEnd">20dp</item>
+        <item name="android:stateListAnimator">@null</item>
+    </style>
+
+    <!-- Everything else: outlined. -->
+    <style name="Anon.Button.Secondary">
+        <item name="android:background">@drawable/anon_button_secondary</item>
+        <item name="android:textColor">@color/anon_text</item>
+        <item name="android:minHeight">48dp</item>
+    </style>
+
+    <style name="Anon.Field" parent="@android:style/Widget.DeviceDefault.EditText">
+        <item name="android:background">@drawable/anon_field</item>
+        <item name="android:textColor">@color/anon_text</item>
+        <item name="android:textColorHint">@color/anon_muted</item>
+        <item name="android:textSize">17sp</item>
+        <item name="android:minHeight">52dp</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+    </style>
+
+    <style name="Anon.Dialog" parent="@android:style/Theme.DeviceDefault.Dialog.Alert">
+        <item name="android:colorBackground">@color/anon_raised</item>
+        <item name="android:colorAccent">@color/anon_accent</item>
+        <item name="android:colorControlActivated">@color/anon_accent</item>
+        <item name="android:textColorPrimary">@color/anon_text</item>
+        <item name="android:textColorSecondary">@color/anon_muted</item>
+        <item name="android:editTextStyle">@style/Anon.Field</item>
+    </style>
+</resources>

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Secure Folder</string>
+    <string name="disguise_name">Tools</string>
+    <string name="tile_name">Tools</string>
+    <string name="share_out">Outside Secure Folder</string>
+    <string name="share_in">Into Secure Folder</string>
+    <string name="create_title">Make a Secure Folder?</string>
+    <string name="create_body">Apps you put in the Secure Folder run in a hidden profile with its own lock and its own encryption key. It isn\'t shown in the app drawer, as a tab or as a section.
+
+Next you\'ll choose its passphrase and, if you like, keyfiles.</string>
+    <string name="create">Make it</string>
+    <string name="cancel">Cancel</string>
+    <string name="locked">Secure Folder is locked</string>
+    <string name="unlock">Unlock</string>
+    <string name="empty">Nothing here yet. Use ⋮ → Add apps.</string>
+    <string name="add_apps">Add apps</string>
+    <string name="lock_now">Lock now</string>
+    <string name="ways_in">Ways in</string>
+    <string name="way_icon">Secure Folder icon in the app drawer</string>
+    <string name="way_disguise">Disguised icon (\"Tools\")</string>
+    <string name="way_tile">Quick Settings tile (\"Tools\")</string>
+    <string name="way_code">Dialer code</string>
+    <string name="set_code">Choose a dialer code</string>
+    <string name="set_code_body">4 to 16 digits. Dial *#*#code#*#* to open the folder. The code is stored only as a salted hash.</string>
+    <string name="code_bad">Use 4 to 16 digits.</string>
+    <string name="code_off">Off</string>
+    <string name="save">Save</string>
+    <string name="remove_app">Remove from Secure Folder</string>
+    <string name="delete_folder">Delete Secure Folder</string>
+    <string name="delete_body">Everything in the folder is gone for good: its apps, files and its encryption key, which is erased from the phone\'s secure hardware. Type DELETE to go on.</string>
+    <string name="delete">Delete</string>
+    <string name="sent">Sent %1$d file(s). They\'re in Downloads.</string>
+    <string name="send_no_access">The app you shared from didn\'t give access to the file, so it can\'t be moved.</string>
+    <string name="send_failed">Couldn\'t send: %1$s</string>
+    <string name="unlock_first">Unlock the Secure Folder, then share again.</string>
+    <string name="no_folder">There\'s no Secure Folder on this phone.</string>
+    <string name="create_failed">Couldn\'t make the Secure Folder: %1$s</string>
+    <string name="existing_space">A Private Space already exists. Delete it in Settings first; its lock can\'t take a passphrase with keyfiles.</string>
+    <string name="key_title_unlock">Unlock Secure Folder</string>
+    <string name="key_title_create">Lock for the Secure Folder</string>
+    <string name="key_title_change">Change passphrase or keyfiles</string>
+    <string name="key_create_body">12 to 256 characters: a few unrelated words is easier to type and harder to guess than a short mix of symbols. Add keyfiles if you want: every one is needed each time, in any order.\n\nIf you forget the passphrase or lose a keyfile, nobody can open the folder again, not even with the phone\'s own lock.</string>
+    <string name="key_passphrase">Passphrase</string>
+    <string name="key_confirm">Passphrase again</string>
+    <string name="key_show">Show passphrase</string>
+    <string name="key_keyfiles_head">Keyfiles</string>
+    <string name="key_no_keyfiles">None</string>
+    <string name="key_add_keyfiles">Add keyfiles</string>
+    <string name="key_clear_keyfiles">Clear</string>
+    <string name="key_set">Set lock</string>
+    <string name="key_reading">Reading keyfiles…</string>
+    <string name="key_too_many">That\'s more than 64 keyfiles.</string>
+    <string name="key_read_failed">A keyfile couldn\'t be read and wasn\'t added.</string>
+    <string name="key_mismatch">The two don\'t match.</string>
+    <string name="key_working_unlock">Checking… (a few seconds, on purpose)</string>
+    <string name="key_working_create">Setting the lock… (a few seconds, on purpose)</string>
+    <string name="key_no_params">This folder wasn\'t made by Secure Folder, so it can\'t be opened here.</string>
+    <string name="key_wrong">That didn\'t open it.</string>
+    <string name="key_throttled">Too many tries. Wait a while, then try again.</string>
+    <string name="key_unsupported">This Android doesn\'t let Secure Folder open the folder with its own lock screen. Secure Folder needs AnonpheneOS.</string>
+    <string name="key_changed">The lock is changed. The old passphrase and keyfiles no longer work.</string>
+    <string name="wipe_title">Delete after wrong tries</string>
+    <string name="wipe_after_n">After %1$d wrong tries in a row</string>
+    <plurals name="key_n_keyfiles">
+        <item quantity="one">%1$d keyfile: %2$s</item>
+        <item quantity="other">%1$d keyfiles: %2$s</item>
+    </plurals>
+</resources>

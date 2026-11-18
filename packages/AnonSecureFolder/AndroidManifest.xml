@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="app.anonphene.securefolder">
+
+    <uses-permission android:name="android.permission.MANAGE_USERS" />
+    <uses-permission android:name="android.permission.CREATE_USERS" />
+    <uses-permission android:name="android.permission.INTERACT_ACROSS_USERS" />
+    <uses-permission android:name="android.permission.INTERACT_ACROSS_USERS_FULL" />
+    <uses-permission android:name="android.permission.MODIFY_QUIET_MODE" />
+    <uses-permission android:name="android.permission.INSTALL_EXISTING_PACKAGES" />
+    <uses-permission android:name="android.permission.INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <uses-permission android:name="android.permission.START_ACTIVITIES_FROM_BACKGROUND" />
+    <uses-permission android:name="android.permission.CHANGE_COMPONENT_ENABLED_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_HIDDEN_PROFILES" />
+    <uses-permission android:name="android.permission.ACCESS_HIDDEN_PROFILES_FULL" />
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!-- Sets and checks the folder's lock directly, without Android's PIN prompt. -->
+    <uses-permission android:name="android.permission.ACCESS_KEYGUARD_SECURE_STORAGE" />
+    <!-- Only AnonpheneOS's own apps (same platform key) may open the folder from outside. -->
+    <permission android:name="app.anonphene.permission.OPEN_SECURE_FOLDER"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="app.anonphene.permission.OPEN_SECURE_FOLDER" />
+
+    <!-- No INTERNET: Secure Folder itself never talks to the network. -->
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_folder"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/no_backup"
+        android:hasFragileUserData="false"
+        android:largeHeap="true"
+        android:theme="@style/Anon">
+
+        <!-- The folder's own app grid. Never in recents, never shown in a screenshot. -->
+        <activity
+            android:name=".FolderActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="app.anonphene.securefolder.folder" />
+
+        <!-- Ways in. Off by default except the dialer code; each can be switched in the folder's menu. -->
+        <activity-alias
+            android:name=".Icon"
+            android:targetActivity=".FolderActivity"
+            android:label="@string/app_name"
+            android:icon="@drawable/ic_folder"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".Disguise"
+            android:targetActivity=".FolderActivity"
+            android:label="@string/disguise_name"
+            android:icon="@drawable/ic_disguise"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <!-- Opened from Settings → Security & privacy, and from the Privacy app. -->
+        <activity-alias
+            android:name=".FromSettings"
+            android:targetActivity=".FolderActivity"
+            android:exported="true"
+            android:permission="app.anonphene.permission.OPEN_SECURE_FOLDER">
+            <intent-filter>
+                <action android:name="app.anonphene.action.OPEN_SECURE_FOLDER" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Dialer code: *#*#<your code>#*#*. Any host is accepted here and checked in code,
+             so the code is yours to choose, not a fixed one written in this file. -->
+        <receiver
+            android:name=".SecretCodeReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.telephony.action.SECRET_CODE" />
+                <data android:scheme="android_secret_code" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Quick Settings tile, only if you add it yourself. -->
+        <service
+            android:name=".FolderTile"
+            android:label="@string/tile_name"
+            android:icon="@drawable/ic_disguise"
+            android:enabled="false"
+            android:exported="true"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Share targets between the folder and the rest of the phone.
+             Each is switched on only in the user where it makes sense. -->
+        <activity
+            android:name=".ShareOutActivity"
+            android:label="@string/share_out"
+            android:icon="@drawable/ic_folder"
+            android:enabled="false"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".ShareInActivity"
+            android:label="@string/share_in"
+            android:icon="@drawable/ic_folder"
+            android:enabled="false"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+        <!-- Runs in the receiving user and saves what was sent into its Downloads. -->
+        <activity
+            android:name=".ReceiveActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+    </application>
+</manifest>

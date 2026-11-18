@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AnonpheneOS framework defaults. -->
+<resources>
+    <!-- No app-prediction service: the share sheet doesn't rank by who you talk to. -->
+    <string name="config_defaultAppPredictionService" translatable="false"></string>
+    <!-- No content capture, no system intelligence hooks. -->
+    <string name="config_defaultContentCaptureService" translatable="false"></string>
+    <string name="config_defaultContentSuggestionsService" translatable="false"></string>
+    <string name="config_defaultSystemCaptionsManagerService" translatable="false"></string>
+    <!-- Notification history is never kept. -->
+    <bool name="config_notificationHistoryEnabled">false</bool>
+</resources>

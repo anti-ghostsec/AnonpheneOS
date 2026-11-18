@@ -1,0 +1,97 @@
+{
+  "comment": "Cases both ShareList.java and tests/sharelist_ref.py must pass. allows: [source, package, class, expected].",
+  "cases": [
+    {
+      "name": "unset setting offers everything",
+      "text": null,
+      "limits": [["app.enclave", false], [null, false]],
+      "allows": [["app.enclave", "org.example.chat", "org.example.chat.Share", true]],
+      "serialized": ""
+    },
+    {
+      "name": "the * rule applies to every app",
+      "text": "*=org.example.mail,org.example.chat\n",
+      "limits": [["app.enclave", true], [null, true]],
+      "allows": [
+        ["app.enclave", "org.example.chat", "org.example.chat.Share", true],
+        ["app.enclave", "com.big.social", "com.big.social.Share", false],
+        [null, "org.example.mail", "org.example.mail.Compose", true]
+      ],
+      "serialized": "*=org.example.mail,org.example.chat\n"
+    },
+    {
+      "name": "an app's own rule replaces the * rule",
+      "text": "app.enclave=org.example.chat\n*=org.example.mail\n",
+      "limits": [["app.enclave", true], ["org.other.app", true]],
+      "allows": [
+        ["app.enclave", "org.example.chat", "org.example.chat.Share", true],
+        ["app.enclave", "org.example.mail", "org.example.mail.Compose", false],
+        ["org.other.app", "org.example.mail", "org.example.mail.Compose", true],
+        ["org.other.app", "org.example.chat", "org.example.chat.Share", false]
+      ],
+      "serialized": "*=org.example.mail\napp.enclave=org.example.chat\n"
+    },
+    {
+      "name": "an empty rule offers nothing",
+      "text": "org.example.camera=\n",
+      "limits": [["org.example.camera", true], ["app.enclave", false]],
+      "allows": [
+        ["org.example.camera", "org.example.chat", "org.example.chat.Share", false],
+        ["app.enclave", "org.example.chat", "org.example.chat.Share", true]
+      ],
+      "serialized": "org.example.camera=\n"
+    },
+    {
+      "name": "one activity of an app, short and full form",
+      "text": "*=org.example.chat/.ShareToStory,org.example.mail/org.example.mail.ui.Compose\n",
+      "limits": [["app.enclave", true]],
+      "allows": [
+        ["app.enclave", "org.example.chat", "org.example.chat.ShareToStory", true],
+        ["app.enclave", "org.example.chat", "org.example.chat.ShareToChat", false],
+        ["app.enclave", "org.example.mail", "org.example.mail.ui.Compose", true],
+        ["app.enclave", "org.example.mail", "org.example.mail.ui.Other", false],
+        ["app.enclave", "org.example.chat", null, false]
+      ],
+      "serialized": "*=org.example.chat/.ShareToStory,org.example.mail/org.example.mail.ui.Compose\n"
+    },
+    {
+      "name": "bad lines are skipped, good ones kept",
+      "text": "# comment\n\nnot a rule\n=org.example.chat\n1bad.pkg=org.example.chat\napp.enclave=org.example.chat,bad target\norg.ok.app = org.example.chat , org.example.mail \n",
+      "limits": [["app.enclave", false], ["org.ok.app", true]],
+      "allows": [
+        ["app.enclave", "com.big.social", "com.big.social.Share", true],
+        ["org.ok.app", "org.example.mail", "org.example.mail.X", true],
+        ["org.ok.app", "com.big.social", "com.big.social.Share", false]
+      ],
+      "serialized": "org.ok.app=org.example.chat,org.example.mail\n"
+    },
+    {
+      "name": "a package prefix is not a match",
+      "text": "*=org.example\n",
+      "limits": [["app.enclave", true]],
+      "allows": [
+        ["app.enclave", "org.example", "org.example.Share", true],
+        ["app.enclave", "org.example.evil", "org.example.evil.Share", false]
+      ],
+      "serialized": "*=org.example\n"
+    }
+  ],
+  "packageNames": [
+    ["app.enclave", true],
+    ["org.example.chat_2", true],
+    ["single", false],
+    ["org..double", false],
+    ["org.1digit", false],
+    ["org.ex-ample", false],
+    ["", false]
+  ],
+  "targets": [
+    ["org.example.chat", true],
+    ["org.example.chat/.Share", true],
+    ["org.example.chat/org.example.chat.Outer$Inner", true],
+    ["org.example.chat/", false],
+    ["org.example.chat/.", false],
+    ["org.example.chat/a/b", false],
+    ["org.example.chat/bad-name", false]
+  ]
+}

@@ -1,0 +1,14 @@
+android_app {
+    name: "AnonSecureFolder",
+    srcs: ["src/**/*.java"],
+    resource_dirs: ["res"],
+    static_libs: ["anonphene-folderkey"],
+    platform_apis: true,
+    certificate: "platform",
+    privileged: true,
+    system_ext_specific: true,
+    optimize: {
+        enabled: true,
+        shrink: true,
+    },
+}

@@ -1,0 +1,12 @@
+# Signing keys never go in the repo.
+keys/
+*.pk8
+*.x509.pem
+*.key
+# Build output and tooling clutter.
+out/
+__pycache__/
+*.pyc
+*.anon-tmp
+.vscode/
+.idea/

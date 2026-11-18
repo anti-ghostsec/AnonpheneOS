@@ -1,0 +1,14 @@
+android_app {
+    name: "AnonPrivacy",
+    srcs: ["src/**/*.java"],
+    resource_dirs: ["res"],
+    static_libs: ["anonphene-sharelist"],
+    platform_apis: true,
+    certificate: "platform",
+    privileged: true,
+    system_ext_specific: true,
+    optimize: {
+        enabled: true,
+        shrink: true,
+    },
+}

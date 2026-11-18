@@ -1,0 +1,13 @@
+prebuilt_etc {
+    name: "privapp-permissions-anonphene.xml",
+    src: "permissions/privapp-permissions-anonphene.xml",
+    sub_dir: "permissions",
+    system_ext_specific: true,
+}
+
+prebuilt_etc {
+    name: "anonphene-user-types.xml",
+    src: "sysconfig/anonphene-user-types.xml",
+    sub_dir: "sysconfig",
+    system_ext_specific: true,
+}

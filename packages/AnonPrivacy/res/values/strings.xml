@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AnonpheneOS privacy</string>
+    <string name="settings_summary">Share list, Secure Folder, no logs, shredding</string>
+    <string name="share_all">Share list for every app</string>
+    <string name="share_all_summary_off">Off: the share sheet shows every app that can receive</string>
+    <string name="share_all_summary_on">%1$d app(s) offered</string>
+    <string name="share_one">Share list for one app</string>
+    <string name="share_one_summary">%1$d app(s) with their own list</string>
+    <string name="hide_people">Hide people and chats in the share sheet</string>
+    <string name="on">On</string>
+    <string name="off">Off</string>
+    <string name="secure_folder">Secure Folder</string>
+    <string name="secure_folder_summary">Hidden profile with its own lock</string>
+    <string name="clear">Clear traces now</string>
+    <string name="clear_summary">Clipboard, deleted-photo trash, then trims free space</string>
+    <string name="shred">Shred files</string>
+    <string name="shred_summary">Overwrite, delete, then trim free space</string>
+    <string name="logs">Logs</string>
+    <string name="logs_on">None kept (log level %1$s)</string>
+    <string name="logs_off">Logging was turned on: level %1$s. Restart to turn it off again.</string>
+    <string name="list_off">Off: show every app</string>
+    <string name="use_every_app">Use the every-app list</string>
+    <string name="pick_source">Sharing from which app?</string>
+    <string name="pick_targets">Apps offered</string>
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="cleared">Cleared</string>
+    <string name="shred_confirm">Shred %1$d file(s)? They\'re overwritten and deleted for good.</string>
+    <string name="shredded">Shredded %1$d of %2$d file(s)</string>
+    <string name="shred_button">Shred</string>
+    <string name="restart">Restart to lock everything</string>
+    <string name="restart_summary">Every key leaves memory until you unlock again</string>
+    <string name="restart_confirm">Restart now? Until the phone is unlocked again, nothing on it can be read, even by someone with tools plugged into it.</string>
+    <string name="restart_button">Restart</string>
+</resources>

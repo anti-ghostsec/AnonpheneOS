@@ -1,0 +1,26 @@
+# AnonpheneOS system properties (installed as product properties).
+#
+# No logs: nothing is kept, in memory or on disk.
+# persist.log.tag=S makes every log call a no-op before it reaches logd
+# (liblog checks this first), so no app or system message is stored.
+persist.log.tag=S
+log.tag=S
+# The ring buffers logd would hold are kept at their smallest.
+persist.logd.size=65536
+ro.logd.size=65536
+# Nothing is ever written to /data/misc/logd.
+persist.logd.logpersistd=
+persist.logd.logpersistd.enable=false
+logd.logpersistd.enable=false
+# No kernel or SELinux audit messages copied into the log.
+ro.logd.kernel=false
+ro.logd.auditd=false
+# No tracing, no bug reports, no incident reports.
+persist.traced.enable=0
+persist.traced_perf.enable=0
+dalvik.vm.dex2oat-minidebuginfo=false
+dalvik.vm.minidebuginfo=false
+# Crashes don't leave tombstones or ANR traces behind (those folders are
+# also kept in RAM; see init/anonphene.rc).
+tombstoned.max_tombstone_count=0
+tombstoned.max_anr_count=0

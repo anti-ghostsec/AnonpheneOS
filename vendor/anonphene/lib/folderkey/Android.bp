@@ -1,0 +1,9 @@
+// Secure Folder key derivation: Argon2id and BLAKE2b in plain Java.
+// tests/ holds FolderKeyCheck, run on a PC by scripts/java-check.py.
+java_library {
+    name: "anonphene-folderkey",
+    srcs: ["src/**/*.java"],
+    sdk_version: "core_current",
+    min_sdk_version: "30",
+    visibility: ["//visibility:public"],
+}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Secure Folder is installed in the hidden (private) profile as well as the main user, so it
+     can offer "Outside Secure Folder" there. Nothing else of AnonpheneOS goes into it. -->
+<config>
+    <install-in-user-type package="app.anonphene.securefolder">
+        <install-in user-type="FULL" />
+        <install-in user-type="android.os.usertype.profile.PRIVATE" />
+    </install-in-user-type>
+    <install-in-user-type package="app.anonphene.privacy">
+        <install-in user-type="FULL" />
+    </install-in-user-type>
+</config>

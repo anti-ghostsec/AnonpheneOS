@@ -1,0 +1,56 @@
+# AnonpheneOS: no logs and no traces left on the phone.
+#
+# The folders where Android keeps crash reports, ANR traces, dropbox entries,
+# bug reports and persisted logs are emptied and then covered by a small RAM
+# filesystem at every boot, so whatever is written there is gone at power off.
+
+on post-fs-data
+    # Empty what an older build or a crash before this point left behind.
+    exec - root root -- /system/bin/rm -rf /data/tombstones /data/anr /data/system/dropbox /data/misc/logd /data/misc/perfetto-traces /data/misc/bootstat /data/user_de/0/com.android.shell/files/bugreports /data/misc/profiling /data/system/procstats /data/system/graphicsstats
+    mkdir /data/tombstones 0771 system system
+    mkdir /data/anr 0775 system system
+    mkdir /data/system/dropbox 0700 system system
+    mkdir /data/misc/logd 0750 logd log
+    mkdir /data/misc/perfetto-traces 0773 root shell
+    mount tmpfs tmpfs /data/tombstones nosuid nodev noexec size=1m,mode=0771,uid=1000,gid=1000
+    mount tmpfs tmpfs /data/anr nosuid nodev noexec size=1m,mode=0775,uid=1000,gid=1000
+    mount tmpfs tmpfs /data/system/dropbox nosuid nodev noexec size=1m,mode=0700,uid=1000,gid=1000
+    mount tmpfs tmpfs /data/misc/logd nosuid nodev noexec size=64k,mode=0750,uid=1036,gid=1007
+    mount tmpfs tmpfs /data/misc/perfetto-traces nosuid nodev noexec size=64k,mode=0773,uid=0,gid=2000
+    restorecon_recursive /data/tombstones
+    restorecon_recursive /data/anr
+    restorecon_recursive /data/system/dropbox
+    restorecon_recursive /data/misc/logd
+    restorecon_recursive /data/misc/perfetto-traces
+
+on property:sys.boot_completed=1
+    # Logs held in memory since boot (before the properties above took hold).
+    exec - logd log -- /system/bin/logcat -b all -c
+    # No persisted logging, whatever a debug menu sets.
+    setprop persist.logd.logpersistd ""
+    setprop logd.logpersistd.enable false
+
+# A debug menu or adb can't turn logging back on: it's reset at once.
+on property:persist.log.tag=V
+    setprop persist.log.tag S
+
+on property:persist.log.tag=D
+    setprop persist.log.tag S
+
+on property:persist.log.tag=I
+    setprop persist.log.tag S
+
+on property:persist.log.tag=W
+    setprop persist.log.tag S
+
+on property:persist.log.tag=E
+    setprop persist.log.tag S
+
+on property:persist.log.tag=F
+    setprop persist.log.tag S
+
+on property:persist.log.tag=A
+    setprop persist.log.tag S
+
+on property:persist.log.tag=
+    setprop persist.log.tag S

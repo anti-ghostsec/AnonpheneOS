@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AnonpheneOS system apps: Whisker's dark palette. Shared word for word by both apps. -->
+<resources>
+    <color name="anon_bg">#101216</color>
+    <color name="anon_panel">#15181d</color>
+    <color name="anon_raised">#1c2026</color>
+    <color name="anon_border">#23272e</color>
+    <color name="anon_text">#e7e9ed</color>
+    <color name="anon_muted">#8a919d</color>
+    <color name="anon_accent">#7b6cf6</color>
+    <!-- Buttons: a deeper shade of the accent, so white labels stay readable (5.3:1). -->
+    <color name="anon_button">#6656e0</color>
+    <color name="anon_on_accent">#ffffff</color>
+    <color name="anon_danger">#e5534b</color>
+</resources>

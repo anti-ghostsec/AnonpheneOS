@@ -1,0 +1,17 @@
+# init covers the crash-report and log folders with RAM filesystems
+# (init/anonphene.rc) and labels them as the folders they replace.
+allow init {
+    tombstone_data_file
+    anr_data_file
+    dropbox_data_file
+    misc_logd_file
+    perfetto_traces_data_file
+}:dir mounton;
+allow init tmpfs:dir relabelfrom;
+allow init {
+    tombstone_data_file
+    anr_data_file
+    dropbox_data_file
+    misc_logd_file
+    perfetto_traces_data_file
+}:dir relabelto;

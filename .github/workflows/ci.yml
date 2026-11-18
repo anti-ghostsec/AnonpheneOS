@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Use the runner's JDK 21
+        run: echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+
+      # Android's system-API stubs and the emulator's public test key, from AOSP's own source
+      # server. The test key is public and is only ever used for emulator test builds.
+      - name: Fetch AOSP system-API stubs and test key
+        run: |
+          set -euo pipefail
+          d="$RUNNER_TEMP/aosp-bits"; mkdir -p "$d"
+          get() { curl -sfL "https://android.googlesource.com/platform/$1?format=TEXT" | base64 -d > "$d/$2"; }
+          get "prebuilts/sdk/+/refs/heads/main/35/system/android.jar" system-android-35.jar
+          get "build/+/refs/heads/main/target/product/security/platform.pk8" platform.pk8
+          get "build/+/refs/heads/main/target/product/security/platform.x509.pem" platform.x509.pem
+          echo "ANONPHENE_SYSTEM_JAR=$d/system-android-35.jar" >> "$GITHUB_ENV"
+          echo "AOSP_BITS=$d" >> "$GITHUB_ENV"
+
+      - name: Tests (format, hooks on a fake tree, manifests, Java, crypto vectors, private details)
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Hooks against AOSP's current source
+        run: python3 scripts/check-hooks-upstream.py
+
+      - name: Build the apps for the emulator (test-key signed)
+        run: python3 scripts/build-apks.py "$AOSP_BITS/platform.pk8" "$AOSP_BITS/platform.x509.pem" out/apks
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: emulator-test-apks
+          path: out/apks/*.apk
+          retention-days: 14

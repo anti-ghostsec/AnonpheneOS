@@ -1,0 +1,10 @@
+// The share-list format, used by the Privacy app. The share sheet
+// (IntentResolver) gets the same source file copied in by scripts/apply.py.
+// Plain Java, no Android APIs.
+java_library {
+    name: "anonphene-sharelist",
+    srcs: ["src/**/*.java"],
+    sdk_version: "core_current",
+    min_sdk_version: "30",
+    visibility: ["//visibility:public"],
+}
