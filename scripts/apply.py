@@ -56,6 +56,12 @@ SETTINGS_KEYS = '''
         /** @hide */
         @Readable
         public static final String ANON_SHARE_HIDE_PEOPLE = "anon_share_hide_people";
+        /** @hide Apps given a blank phone number, package names separated by commas. */
+        @Readable
+        public static final String ANON_PHONE_NUMBER_BLANK = "anon_phone_number_blank";
+        /** @hide Apps allowed to use mobile data, package names separated by commas. */
+        @Readable
+        public static final String ANON_MOBILE_DATA_ALLOWED = "anon_mobile_data_allowed";
 '''
 
 
@@ -256,8 +262,132 @@ def hook_share_tabs(tree):
     return out
 
 
+NUMBER_LEGACY = (
+    "\n{ind}// {mark}: on AnonpheneOS only the phone-number permission (or being the default SMS\n"
+    "{ind}// app) gives the number. {what} alone gives empty data instead.\n"
+    "{ind}if (result == PackageManager.PERMISSION_GRANTED) {{\n"
+    "{ind}    result = AppOpsManager.MODE_IGNORED;\n"
+    "{ind}}}\n"
+)
+
+
+def hook_phone_number(tree):
+    """READ_PHONE_STATE (apps built for Android 10 and older) and READ_SMS no longer give the number."""
+    p = tree / "frameworks/base/services/core/java/com/android/server/pm/permission/LegacyPermissionManagerService.java"
+    if not p.exists():
+        raise HookError(f"missing {p.relative_to(tree)}")
+    s = p.read_text()
+    if f"{MARK}: on AnonpheneOS only the phone-number permission" in s:
+        return {}
+    m = re.search(r"public\s+int\s+checkPhoneNumberAccess\s*\(", s)
+    if not m:
+        raise HookError("LegacyPermissionManagerService.java: checkPhoneNumberAccess(...) not found")
+    body = s[m.end():]
+    # 1. READ_PHONE_STATE for old apps: "if (result == GRANTED) { return result; }" right after
+    #    the READ_PHONE_STATE check.
+    legacy = re.search(r"android\.Manifest\.permission\.READ_PHONE_STATE,[^;]*;\n(\s*)if \(result == "
+                       r"PackageManager\.PERMISSION_GRANTED\) \{\n\s*return result;\n\s*\}\n", body)
+    # 2. READ_SMS: "if (checkPermissionAndAppop(..READ_SMS..) == GRANTED) { return GRANTED; }"
+    sms = re.search(r"\n(\s*)if \(checkPermissionAndAppop\(packageName, android\.Manifest\.permission\.READ_SMS,"
+                    r"[^{]*\{\n\s*return PackageManager\.PERMISSION_GRANTED;\n\s*\}\n", body)
+    if not legacy or not sms or sms.start() < legacy.end():
+        raise HookError("LegacyPermissionManagerService.checkPhoneNumberAccess: READ_PHONE_STATE / READ_SMS checks not found")
+    ind = legacy.group(1)
+    new_legacy = body[legacy.start():legacy.end()]
+    new_legacy = re.sub(r"if \(result == PackageManager\.PERMISSION_GRANTED\) \{\n\s*return result;\n\s*\}\n",
+                        NUMBER_LEGACY.format(ind=ind, mark=MARK, what="READ_PHONE_STATE").lstrip(), new_legacy)
+    sind = sms.group(1)
+    call = re.search(r"if \((checkPermissionAndAppop\(packageName, android\.Manifest\.permission\.READ_SMS,[^{]*?)\)\s*\{",
+                     body[sms.start():sms.end()], re.S)
+    new_sms = (f"\n{sind}// {MARK}: READ_SMS alone gives empty data, not the number.\n"
+               f"{sind}if (({call.group(1)}) && result != PackageManager.PERMISSION_GRANTED) {{\n"
+               f"{sind}    result = AppOpsManager.MODE_IGNORED;\n{sind}}}\n")
+    body = (body[:legacy.start()] + new_legacy + body[legacy.end():sms.start()] + new_sms + body[sms.end():])
+    return {p: s[: m.end()] + body}
+
+
+PHONE_BLANK = '''
+        // {mark}: apps you chose to give a blank phone number get empty data, as if the
+        // permission's app op were off (Settings > AnonpheneOS privacy > Phone number).
+        final long anonToken = Binder.clearCallingIdentity();
+        try {{
+            final String anonBlank = android.provider.Settings.Secure.getStringForUser(
+                    context.getContentResolver(), "anon_phone_number_blank",
+                    android.os.UserHandle.getUserId({uid}));
+            final String[] anonPkgs = anonBlank == null ? null
+                    : context.getPackageManager().getPackagesForUid({uid});
+            if (anonPkgs != null) {{
+                for (String anonEntry : anonBlank.split(",")) {{
+                    for (String anonPkg : anonPkgs) {{
+                        if (anonPkg.equals(anonEntry.trim())) return false;
+                    }}
+                }}
+            }}
+        }} finally {{
+            Binder.restoreCallingIdentity(anonToken);
+        }}
+'''
+
+
+def hook_phone_blank(tree):
+    """TelephonyPermissions.checkReadPhoneNumber: chosen apps get a blank number."""
+    p = tree / "frameworks/base/telephony/common/com/android/internal/telephony/TelephonyPermissions.java"
+    if not p.exists():
+        raise HookError(f"missing {p.relative_to(tree)}")
+    s = p.read_text()
+    if f"{MARK}: apps you chose to give a blank phone number" in s:
+        return {}
+    m = re.search(r"public\s+static\s+boolean\s+checkReadPhoneNumber\s*\(([^)]*)\)\s*\{\n", s)
+    if not m:
+        raise HookError("TelephonyPermissions.java: checkReadPhoneNumber(...) not found")
+    names = [re.sub(r"@\w+(\([^)]*\))?", "", x).split() for x in m.group(1).split(",")]
+    if ["Context", "context"] not in names or ["int", "uid"] not in names:
+        raise HookError("TelephonyPermissions.checkReadPhoneNumber: expected (Context context, ..., int uid, ...)")
+    if "import android.os.Binder;" not in s:
+        raise HookError("TelephonyPermissions.java: android.os.Binder not imported")
+    return {p: s[: m.end()] + PHONE_BLANK.format(mark=MARK, uid="uid") + s[m.end():]}
+
+
+def hook_mobile_data(tree):
+    """NetworkPolicyManagerService: apps may use mobile data only once allowed."""
+    p = tree / "frameworks/base/services/core/java/com/android/server/net/NetworkPolicyManagerService.java"
+    if not p.exists():
+        raise HookError(f"missing {p.relative_to(tree)}")
+    out = {}
+    s = p.read_text()
+    if f"{MARK}: AnonpheneOS mobile data" not in s:
+        m = re.search(r"private\s+boolean\s+isRestrictedByAdminUL\s*\(\s*int\s+uid\s*\)\s*\{", s)
+        ret = "return restrictedUids != null && restrictedUids.contains(uid);"
+        if not m or s.find(ret, m.end()) < 0 or s.find(ret, m.end()) > m.end() + 400:
+            raise HookError("NetworkPolicyManagerService.java: isRestrictedByAdminUL(int uid) not as expected")
+        at = s.find(ret, m.end())
+        s = (s[:at] + "// " + MARK + ": AnonpheneOS mobile data permission (AnonMobileData.java).\n"
+             "        return (restrictedUids != null && restrictedUids.contains(uid))\n"
+             "                || AnonMobileData.blocks(uid);" + s[at + len(ret):])
+        r = re.search(r"public\s+void\s+systemReady\s*\([^)]*\)\s*\{", s)
+        start = "mMultipathPolicyTracker.start();"
+        at = s.find(start, r.end()) if r else -1
+        if at < 0 or at > r.end() + 800:
+            raise HookError("NetworkPolicyManagerService.systemReady: mMultipathPolicyTracker.start() not found")
+        for needed in ("void updateRulesForRestrictBackgroundUL()", "mUidRulesFirstLock", "final Handler mHandler"):
+            if needed not in s:
+                raise HookError(f"NetworkPolicyManagerService.java: {needed} not found")
+        end = at + len(start)
+        s = (s[:end] + "\n            AnonMobileData.start(mContext, mHandler, () -> {\n"
+             "                synchronized (mUidRulesFirstLock) {\n"
+             "                    updateRulesForRestrictBackgroundUL();\n"
+             "                }\n"
+             "            });" + s[end:])
+        out[p] = s
+    dst = p.parent / "AnonMobileData.java"
+    text = (HERE / "hooks/frameworks/AnonMobileData.java").read_text()
+    if not dst.exists() or dst.read_text() != text:
+        out[dst] = text
+    return out
+
+
 HOOKS = [hook_product, hook_settings, hook_hide_people, hook_share_list, hook_share_tabs,
-         hook_folder_gate, hook_launcher]
+         hook_folder_gate, hook_launcher, hook_phone_number, hook_phone_blank, hook_mobile_data]
 
 
 OURS = ".anonphene-copy"

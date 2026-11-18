@@ -21,6 +21,13 @@ adds:
   if you switch it on.
 - **A share sheet that shows only the apps you chose.** Pick the apps offered when sharing from
   any app, and give single apps their own list. People and recent chats aren't shown.
+- **Your phone number only goes where you say.** Only the phone-number permission (or being
+  the default SMS app) gives an app your number; older apps' general phone permission and SMS
+  access give a blank one. You can give any app a blank number instead of the real one, and see
+  every app that can get it, and why.
+- **Mobile data is a permission, off by default.** Installed apps use Wi-Fi until you allow them
+  mobile data, so your carrier never carries their traffic and can't attach or confirm your
+  number for them ("silent number verification").
 - **Secure deletion.** Deleting the Secure Folder erases its key from the phone's secure hardware.
   Files can be shredded (overwritten, deleted, then the free space trimmed), and the photo trash
   is emptied at every boot instead of after 30 days.
@@ -46,6 +53,8 @@ adds:
 | Ways into the private profile | App drawer, Settings | Dialer code, icon, disguised icon, Quick Settings tile (your choice) |
 | Share sheet | Every app that can receive, plus people, with Personal / Private tabs | Only the apps on your share list (per app if you like), no people, no tabs: only the side you're on, as on Motorola |
 | Sharing between profiles | Android's own way | Also "Into Secure Folder" / "Outside Secure Folder" share targets |
+| Phone number | Apps with the phone, SMS or phone-number permission | Only the phone-number permission or the default SMS app; any app can be given a blank number |
+| Mobile data | Every app with internet access | Installed apps only once you allow it (built-in apps always) |
 | Photo trash | Emptied after 30 days | Emptied at every boot, or now from Settings |
 | Shredding files | No | Settings → AnonpheneOS privacy → Shred files |
 | Lock everything at once | Restart from the power menu | Settings → AnonpheneOS privacy → Restart to lock everything |
@@ -167,6 +176,12 @@ resources, the no-logs settings, and a scan for private details.
   attaches to (`ResolverListController.filterIneligibleActivities`,
   `ShortcutService.getShareTargets`, `Settings.Secure`). If a GrapheneOS release renames one, it
   stops and says which, without changing anything.
+- **Mobile data has three gaps.** Built-in apps are always allowed, so calls, texts and the
+  carrier's own services work. Android decides "mobile data" by whether a network is metered:
+  a mobile plan your carrier marks unmetered isn't covered, and a metered Wi-Fi (a hotspot) is
+  closed to those apps too. A VPN running over mobile data counts as mobile data as well.
+- **The default phone and SMS apps and the SIM's carrier app can always read the number**
+  unless you give them a blank one, which may break MMS or the carrier's features.
 - **The GSI is weaker than the Pixel build.** Its bootloader stays unlocked, so someone with the
   phone could flash a modified system unnoticed, and the folder is only as strong as the
   phone's own secure hardware plus your passphrase and keyfiles. It's also less tested.

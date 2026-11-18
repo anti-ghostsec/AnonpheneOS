@@ -30,6 +30,12 @@ FILES = {
         "packages/modules/IntentResolver/+/{ref}/java/src/com/android/intentresolver/ResolverListController.java",
     "packages/modules/IntentResolver/java/src/com/android/intentresolver/domain/interactor/UserInteractor.kt":
         "packages/modules/IntentResolver/+/{ref}/java/src/com/android/intentresolver/domain/interactor/UserInteractor.kt",
+    "frameworks/base/services/core/java/com/android/server/pm/permission/LegacyPermissionManagerService.java":
+        "frameworks/base/+/{ref}/services/core/java/com/android/server/pm/permission/LegacyPermissionManagerService.java",
+    "frameworks/base/telephony/common/com/android/internal/telephony/TelephonyPermissions.java":
+        "frameworks/base/+/{ref}/telephony/common/com/android/internal/telephony/TelephonyPermissions.java",
+    "frameworks/base/services/core/java/com/android/server/net/NetworkPolicyManagerService.java":
+        "frameworks/base/+/{ref}/services/core/java/com/android/server/net/NetworkPolicyManagerService.java",
     "packages/apps/Launcher3/src/com/android/launcher3/allapps/PrivateProfileManager.java":
         "packages/apps/Launcher3/+/{ref}/src/com/android/launcher3/allapps/PrivateProfileManager.java",
 }

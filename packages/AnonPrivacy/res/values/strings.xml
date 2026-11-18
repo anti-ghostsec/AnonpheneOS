@@ -33,4 +33,17 @@
     <string name="restart_summary">Every key leaves memory until you unlock again</string>
     <string name="restart_confirm">Restart now? Until the phone is unlocked again, nothing on it can be read, even by someone with tools plugged into it.</string>
     <string name="restart_button">Restart</string>
+    <string name="phone_number">Phone number</string>
+    <string name="phone_number_summary">%1$d app(s) can get it, %2$d of them a blank one</string>
+    <string name="phone_number_none">No app can get your phone number.</string>
+    <string name="phone_number_title">Tick to give a blank number</string>
+    <string name="why_permission">has the phone number permission</string>
+    <string name="why_sms">default SMS app</string>
+    <string name="why_dialer">default phone app</string>
+    <string name="why_carrier">your SIM\'s carrier app</string>
+    <string name="mobile_data">Mobile data</string>
+    <string name="mobile_data_summary">%1$d app(s) allowed. Others use Wi-Fi only.</string>
+    <string name="mobile_data_title">Allowed to use mobile data</string>
+    <string name="mobile_data_none">No installed app uses the internet.</string>
+    <string name="ok">OK</string>
 </resources>

@@ -77,6 +77,23 @@ To keep the main side out of reach too:
 - Use a long passphrase for the phone too, not only for the folder.
 - Keep USB debugging off. Turn it on only when you're working on the phone yourself.
 
+## Your phone number
+
+On stock Android an app can get your number in more ways than the "phone number" prompt
+suggests: older apps through the general "make and manage phone calls" permission, apps with
+SMS access, the default phone and SMS apps, the SIM's carrier app, and, off the phone entirely,
+your carrier, which can attach your number to an app's mobile data or confirm it to the app's
+server without asking you.
+
+AnonpheneOS:
+
+- gives the number only to apps holding the phone-number permission and to the default SMS app.
+  The general phone permission and SMS access give empty data instead, without breaking the app;
+- lets you give any app a blank number, whatever it holds (Settings → AnonpheneOS privacy →
+  Phone number). That page lists every app that can get it, and why;
+- makes mobile data a permission, off for installed apps (Settings → AnonpheneOS privacy →
+  Mobile data). Their traffic then goes over Wi-Fi or not at all, so the carrier never sees it.
+
 ## What it can't protect against
 
 - Someone watching you type the passphrase (a camera, over your shoulder).

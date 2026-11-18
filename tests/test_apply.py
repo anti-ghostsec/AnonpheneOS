@@ -37,6 +37,56 @@ FILES = {
         "    }\n"
         "    private void setQuietModeEnabled(int userId, boolean enable, IntentSender target, String pkg) {}\n"
         "}\n"),
+    "frameworks/base/services/core/java/com/android/server/pm/permission/LegacyPermissionManagerService.java": (
+        "public class LegacyPermissionManagerService {\n"
+        "    public int checkPhoneNumberAccess(@Nullable String packageName, @Nullable String message,\n"
+        "            @Nullable String callingFeatureId, int pid, int uid) {\n"
+        "        int result = PackageManager.PERMISSION_DENIED;\n"
+        "        if (preR) {\n"
+        "            result = checkPermissionAndAppop(packageName,\n"
+        "                    android.Manifest.permission.READ_PHONE_STATE,\n"
+        "                    AppOpsManager.OPSTR_READ_PHONE_STATE, callingFeatureId, message, pid, uid);\n"
+        "            if (result == PackageManager.PERMISSION_GRANTED) {\n"
+        "                return result;\n"
+        "            }\n"
+        "        }\n"
+        "        if (checkPermissionAndAppop(packageName, android.Manifest.permission.READ_PHONE_NUMBERS,\n"
+        "                AppOpsManager.OPSTR_READ_PHONE_NUMBERS, callingFeatureId, message, pid, uid)\n"
+        "                == PackageManager.PERMISSION_GRANTED) {\n"
+        "            return PackageManager.PERMISSION_GRANTED;\n"
+        "        }\n"
+        "        if (checkPermissionAndAppop(packageName, android.Manifest.permission.READ_SMS,\n"
+        "                AppOpsManager.OPSTR_READ_SMS, callingFeatureId, message, pid, uid)\n"
+        "                == PackageManager.PERMISSION_GRANTED) {\n"
+        "            return PackageManager.PERMISSION_GRANTED;\n"
+        "        }\n"
+        "        return result;\n"
+        "    }\n"
+        "}\n"),
+    "frameworks/base/telephony/common/com/android/internal/telephony/TelephonyPermissions.java": (
+        "import android.os.Binder;\n"
+        "public final class TelephonyPermissions {\n"
+        "    public static boolean checkReadPhoneNumber(\n"
+        "            Context context, int subId, int pid, int uid,\n"
+        "            String callingPackage, @Nullable String callingFeatureId, String message) {\n"
+        "        return real();\n"
+        "    }\n"
+        "}\n"),
+    "frameworks/base/services/core/java/com/android/server/net/NetworkPolicyManagerService.java": (
+        "public class NetworkPolicyManagerService {\n"
+        "    final Handler mHandler;\n"
+        "    final Object mUidRulesFirstLock = new Object();\n"
+        "    public void systemReady(CountDownLatch initCompleteSignal) {\n"
+        "        try {\n"
+        "            mMultipathPolicyTracker.start();\n"
+        "        } catch (InterruptedException e) {}\n"
+        "    }\n"
+        "    private void updateRulesForRestrictBackgroundUL() {}\n"
+        "    private boolean isRestrictedByAdminUL(int uid) {\n"
+        "        final Set<Integer> restrictedUids = mMeteredRestrictedUids.get(UserHandle.getUserId(uid));\n"
+        "        return restrictedUids != null && restrictedUids.contains(uid);\n"
+        "    }\n"
+        "}\n"),
     "packages/apps/Launcher3/src/com/android/launcher3/allapps/PrivateProfileManager.java": (
         "public class PrivateProfileManager {\n"
         "    public boolean isPrivateSpaceHidden() {\n"
@@ -116,6 +166,17 @@ class Apply(unittest.TestCase):
             self.assertIn("userRepository.users.map { all -> anonOwnSide(all, launchedAs) }.map { users ->", ui)
             self.assertIn("(availability.anonById(it.primary) ?: false)", ui)
             self.assertTrue(next(t.rglob("UserInteractor.kt")).with_name("AnonOwnSide.kt").is_file())
+            lp = next(t.rglob("LegacyPermissionManagerService.java")).read_text()
+            self.assertNotIn("return result;\n            }", lp)  # READ_PHONE_STATE no longer returns GRANTED
+            self.assertEqual(lp.count("result = AppOpsManager.MODE_IGNORED;"), 2)
+            self.assertIn("READ_PHONE_NUMBERS", lp)
+            self.assertIn("            return PackageManager.PERMISSION_GRANTED;\n        }\n        // ANONPHENE", lp)
+            tp = next(t.rglob("TelephonyPermissions.java")).read_text()
+            self.assertLess(tp.index('"anon_phone_number_blank"'), tp.index("return real();"))
+            np_ = next(t.rglob("NetworkPolicyManagerService.java")).read_text()
+            self.assertIn("|| AnonMobileData.blocks(uid);", np_)
+            self.assertLess(np_.index("mMultipathPolicyTracker.start();"), np_.index("AnonMobileData.start("))
+            self.assertTrue(next(t.rglob("NetworkPolicyManagerService.java")).with_name("AnonMobileData.java").is_file())
             ir = t / "packages/modules/IntentResolver/java/src"
             self.assertTrue((ir / "com/android/intentresolver/AnonShareFilter.java").is_file())
             self.assertTrue((ir / "app/anonphene/sharelist/ShareList.java").is_file())

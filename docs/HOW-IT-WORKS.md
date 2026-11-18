@@ -85,6 +85,25 @@ Secure Folder is installed in the profile too (`sysconfig/anonphene-user-types.x
 - Both keys are added to `Settings.Secure` as readable, so the share sheet is allowed to read
   them.
 
+## Phone number
+
+- `LegacyPermissionManagerService.checkPhoneNumberAccess` is where Android decides who may read
+  the number. `scripts/apply.py` turns its two side doors (READ_PHONE_STATE for apps built for
+  Android 10 or older, and READ_SMS) into "empty data" (`MODE_IGNORED`), so those apps get no
+  number but don't crash. The phone-number permission and the default SMS app still pass.
+- `TelephonyPermissions.checkReadPhoneNumber`, which every number-returning call goes through
+  (`getLine1Number`, `SubscriptionManager.getPhoneNumber`, a subscription's number), returns
+  "empty" for apps listed in `anon_phone_number_blank`, before any other check.
+
+## Mobile data
+
+- `NetworkPolicyManagerService.isRestrictedByAdminUL` is the check behind the mobile-data
+  restriction a device administrator can set: it closes metered networks to an app in the
+  foreground and the background. The hook adds `AnonMobileData.blocks(uid)`: an installed app
+  not in `anon_mobile_data_allowed` is blocked; built-in apps never are.
+- `AnonMobileData` watches that setting and package changes, and recomputes every app's rules
+  when either changes.
+
 ## Secure deletion
 
 - **Secure Folder**: deleting it erases the profile's keys (above).

@@ -22,6 +22,22 @@ final class Store {
         Settings.Secure.putString(ctx.getContentResolver(), ShareList.SETTING, text.isEmpty() ? null : text);
     }
 
+    /** Settings.Secure keys read by AnonpheneOS's telephony and network-policy hooks. */
+    static final String PHONE_NUMBER_BLANK = "anon_phone_number_blank";
+    static final String MOBILE_DATA_ALLOWED = "anon_mobile_data_allowed";
+
+    /** A comma-separated package list setting, as a set. */
+    static java.util.Set<String> packages(Context ctx, String key) {
+        java.util.Set<String> out = new java.util.TreeSet<>();
+        String s = Settings.Secure.getString(ctx.getContentResolver(), key);
+        if (s != null) for (String p : s.split(",")) if (ShareList.isPackageName(p.trim())) out.add(p.trim());
+        return out;
+    }
+
+    static void setPackages(Context ctx, String key, java.util.Set<String> pkgs) {
+        Settings.Secure.putString(ctx.getContentResolver(), key, pkgs.isEmpty() ? null : String.join(",", new java.util.TreeSet<>(pkgs)));
+    }
+
     static boolean hidePeople(Context ctx) {
         return Settings.Secure.getInt(ctx.getContentResolver(), ShareList.SETTING_HIDE_PEOPLE, 1) != 0;
     }

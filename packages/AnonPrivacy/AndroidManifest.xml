@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.READ_CLIPBOARD_IN_BACKGROUND" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REBOOT" />
+    <!-- Only to list which apps the SIM's carrier trusts (they can read the number). -->
+    <uses-permission android:name="android.permission.READ_PRIVILEGED_PHONE_STATE" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="app.anonphene.permission.OPEN_SECURE_FOLDER" />
     <!-- No INTERNET. -->

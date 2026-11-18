@@ -94,6 +94,15 @@ public class PrivacyActivity extends Activity {
         mRows.add(new Row(getString(R.string.share_one),
                 getString(R.string.share_one_summary, sl.sourcesWithOwnRule().size()),
                 this::pickSource));
+        java.util.List<NumberHolder> holders = numberHolders();
+        int blank = 0;
+        java.util.Set<String> blanked = Store.packages(this, Store.PHONE_NUMBER_BLANK);
+        for (NumberHolder h : holders) if (blanked.contains(h.pkg)) blank++;
+        mRows.add(new Row(getString(R.string.phone_number),
+                getString(R.string.phone_number_summary, holders.size(), blank), this::editPhoneNumber));
+        mRows.add(new Row(getString(R.string.mobile_data),
+                getString(R.string.mobile_data_summary, Store.packages(this, Store.MOBILE_DATA_ALLOWED).size()),
+                this::editMobileData));
         boolean hide = Store.hidePeople(this);
         mRows.add(new Row(getString(R.string.hide_people), getString(hide ? R.string.on : R.string.off),
                 () -> {
@@ -222,6 +231,142 @@ public class PrivacyActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle(R.string.pick_source)
                 .setItems(labels.toArray(new CharSequence[0]), (x, w) -> editTargets(pkgs.get(w)))
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    // ---- Phone number ----
+
+    private static final class NumberHolder {
+        final String pkg;
+        final CharSequence label;
+
+        NumberHolder(String pkg, CharSequence label) {
+            this.pkg = pkg;
+            this.label = label;
+        }
+    }
+
+    /**
+     * Every app that can get the number on AnonpheneOS, with why: the phone-number permission,
+     * the default SMS or phone app, or the SIM's carrier app.
+     */
+    private java.util.List<NumberHolder> numberHolders() {
+        PackageManager pm = getPackageManager();
+        Map<String, java.util.List<String>> why = new java.util.TreeMap<>();
+        for (android.content.pm.PackageInfo pi : pm.getInstalledPackages(
+                PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS))) {
+            if (pi.requestedPermissions == null) continue;
+            for (int i = 0; i < pi.requestedPermissions.length; i++) {
+                if (android.Manifest.permission.READ_PHONE_NUMBERS.equals(pi.requestedPermissions[i])
+                        && (pi.requestedPermissionsFlags[i] & android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+                        && (pi.applicationInfo.flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0) {
+                    why.computeIfAbsent(pi.packageName, k -> new ArrayList<>()).add(getString(R.string.why_permission));
+                }
+            }
+        }
+        String sms = android.provider.Telephony.Sms.getDefaultSmsPackage(this);
+        if (sms != null) why.computeIfAbsent(sms, k -> new ArrayList<>()).add(getString(R.string.why_sms));
+        android.telecom.TelecomManager tm = getSystemService(android.telecom.TelecomManager.class);
+        String dialer = tm != null ? tm.getDefaultDialerPackage() : null;
+        if (dialer != null) why.computeIfAbsent(dialer, k -> new ArrayList<>()).add(getString(R.string.why_dialer));
+        try {
+            android.telephony.TelephonyManager tel = getSystemService(android.telephony.TelephonyManager.class);
+            for (String c : tel.getCarrierPrivilegedPackagesForAllActiveSubscriptions()) {
+                why.computeIfAbsent(c, k -> new ArrayList<>()).add(getString(R.string.why_carrier));
+            }
+        } catch (RuntimeException e) {
+            // no SIM, or no telephony on this device
+        }
+        java.util.List<NumberHolder> out = new ArrayList<>();
+        for (Map.Entry<String, java.util.List<String>> e : why.entrySet()) {
+            CharSequence name;
+            try {
+                name = pm.getApplicationLabel(pm.getApplicationInfo(e.getKey(), 0));
+            } catch (PackageManager.NameNotFoundException ex) {
+                continue;
+            }
+            out.add(new NumberHolder(e.getKey(), name + " · " + String.join(", ", e.getValue())));
+        }
+        return out;
+    }
+
+    private void editPhoneNumber() {
+        java.util.List<NumberHolder> holders = numberHolders();
+        if (holders.isEmpty()) {
+            new AlertDialog.Builder(this).setMessage(R.string.phone_number_none)
+                    .setPositiveButton(R.string.ok, null).show();
+            return;
+        }
+        Set<String> blanked = Store.packages(this, Store.PHONE_NUMBER_BLANK);
+        CharSequence[] labels = new CharSequence[holders.size()];
+        boolean[] on = new boolean[holders.size()];
+        for (int i = 0; i < labels.length; i++) {
+            labels[i] = holders.get(i).label;
+            on[i] = blanked.contains(holders.get(i).pkg);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.phone_number_title)
+                .setMultiChoiceItems(labels, on, (d, w, c) -> on[w] = c)
+                .setPositiveButton(R.string.save, (d, w) -> {
+                    Set<String> next = Store.packages(this, Store.PHONE_NUMBER_BLANK);
+                    for (int i = 0; i < on.length; i++) {
+                        if (on[i]) next.add(holders.get(i).pkg); else next.remove(holders.get(i).pkg);
+                    }
+                    Store.setPackages(this, Store.PHONE_NUMBER_BLANK, next);
+                    rebuild();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    // ---- Mobile data ----
+
+    /** Installed (not built-in) apps that use the internet, by name. */
+    private java.util.List<android.content.pm.ApplicationInfo> internetApps() {
+        PackageManager pm = getPackageManager();
+        java.util.List<android.content.pm.ApplicationInfo> out = new ArrayList<>();
+        for (android.content.pm.PackageInfo pi : pm.getInstalledPackages(
+                PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS))) {
+            if ((pi.applicationInfo.flags & (android.content.pm.ApplicationInfo.FLAG_SYSTEM
+                    | android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0) continue;
+            if (pi.requestedPermissions == null) continue;
+            if (java.util.Arrays.asList(pi.requestedPermissions).contains(android.Manifest.permission.INTERNET)) {
+                out.add(pi.applicationInfo);
+            }
+        }
+        out.sort((a, b) -> pm.getApplicationLabel(a).toString().compareToIgnoreCase(pm.getApplicationLabel(b).toString()));
+        return out;
+    }
+
+    private void editMobileData() {
+        PackageManager pm = getPackageManager();
+        java.util.List<android.content.pm.ApplicationInfo> apps = internetApps();
+        if (apps.isEmpty()) {
+            new AlertDialog.Builder(this).setMessage(R.string.mobile_data_none)
+                    .setPositiveButton(R.string.ok, null).show();
+            return;
+        }
+        Set<String> allowed = Store.packages(this, Store.MOBILE_DATA_ALLOWED);
+        CharSequence[] labels = new CharSequence[apps.size()];
+        boolean[] on = new boolean[apps.size()];
+        for (int i = 0; i < labels.length; i++) {
+            labels[i] = pm.getApplicationLabel(apps.get(i));
+            on[i] = allowed.contains(apps.get(i).packageName);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.mobile_data_title)
+                .setMultiChoiceItems(labels, on, (d, w, c) -> on[w] = c)
+                .setPositiveButton(R.string.save, (d, w) -> {
+                    // Apps no longer installed keep their place in the list, so a reinstall
+                    // doesn't silently lose (or gain) mobile data.
+                    Set<String> next = Store.packages(this, Store.MOBILE_DATA_ALLOWED);
+                    for (int i = 0; i < on.length; i++) {
+                        if (on[i]) next.add(apps.get(i).packageName); else next.remove(apps.get(i).packageName);
+                    }
+                    Store.setPackages(this, Store.MOBILE_DATA_ALLOWED, next);
+                    rebuild();
+                })
                 .setNegativeButton(R.string.cancel, null)
                 .show();
     }
