@@ -46,4 +46,7 @@
     <string name="mobile_data_title">Allowed to use mobile data</string>
     <string name="mobile_data_none">No installed app uses the internet.</string>
     <string name="ok">OK</string>
+    <string name="folder_vpn">Secure Folder uses the main VPN</string>
+    <string name="folder_vpn_on">On: the folder goes through your VPN, and a VPN or Tor inside it goes through your VPN too</string>
+    <string name="folder_vpn_off">Off: the folder has its own route; with no VPN inside it, it goes straight out</string>
 </resources>

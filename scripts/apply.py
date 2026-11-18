@@ -62,6 +62,9 @@ SETTINGS_KEYS = '''
         /** @hide Apps allowed to use mobile data, package names separated by commas. */
         @Readable
         public static final String ANON_MOBILE_DATA_ALLOWED = "anon_mobile_data_allowed";
+        /** @hide 1 (default): the Secure Folder goes through, and its VPN inside, this user's VPN. */
+        @Readable
+        public static final String ANON_FOLDER_VIA_MAIN_VPN = "anon_folder_via_main_vpn";
 '''
 
 
@@ -386,8 +389,170 @@ def hook_mobile_data(tree):
     return out
 
 
+VPN_HELPERS = '''
+    // {mark}: helpers for AnonVpnRoute (the Secure Folder and the main VPN, docs/design/VPN.md).
+    /** {{set-up VPN app or null, connected VPN app or null}}, read under this Vpn's lock. */
+    synchronized String[] anonPackages() {{
+        final String prepared = mPackage == null || VpnConfig.LEGACY_VPN.equals(mPackage)
+                ? null : mPackage;
+        return new String[] {{prepared, mNetworkAgent != null && mConfig != null ? prepared : null}};
+    }}
+
+    int anonOwnerUid() {{
+        return mOwnerUID;
+    }}
+
+    int anonUserId() {{
+        return mUserId;
+    }}
+
+    int anonNetId() {{
+        final NetworkAgent agent = mNetworkAgent;
+        final android.net.Network net = agent == null ? null : agent.getNetwork();
+        return net == null ? 0 : net.getNetId();
+    }}
+
+    synchronized void anonRefreshRanges() {{
+        if (mNetworkAgent != null && mConfig != null && mNetworkCapabilities != null) {{
+            mNetworkCapabilities = new NetworkCapabilities.Builder(mNetworkCapabilities)
+                    .setUids(createUserAndRestrictedProfilesRanges(mUserId,
+                            mConfig.allowedApplications, mConfig.disallowedApplications))
+                    .build();
+            doSendNetworkCapabilities(mNetworkAgent, mNetworkCapabilities);
+        }}
+        if (mLockdown) setVpnForcedLocked(true);
+    }}
+'''
+
+VPN_SELF = '''
+        // {mark}: a Secure Folder's VPN doesn't carry its own app: the owner's VPN does.
+        final String anonSelf = AnonVpnRoute.folderVpnPackage(userId);
+        if (anonSelf != null && AnonVpnRoute.chainsOut(mContext, userId)) {{
+            if (allowedApplications != null) {{
+                allowedApplications = new java.util.ArrayList<>(allowedApplications);
+                allowedApplications.remove(anonSelf);
+            }} else {{
+                disallowedApplications = disallowedApplications == null
+                        ? new java.util.ArrayList<>() : new java.util.ArrayList<>(disallowedApplications);
+                if (!disallowedApplications.contains(anonSelf)) disallowedApplications.add(anonSelf);
+            }}
+        }}
+'''
+
+VPN_FOLDER = '''
+        // {mark}: this user's Secure Folder rides this VPN: all of it, or only the VPN running
+        // inside it, whose tunnel this VPN then carries.
+        for (int anonFolder : AnonVpnRoute.carriedFolders(mContext, userId)) {{
+            final String anonOwn = AnonVpnRoute.folderVpnPackage(anonFolder);
+            addUserToRanges(ranges, anonFolder,
+                    anonOwn == null ? null : java.util.List.of(anonOwn), null);
+        }}
+'''
+
+
+def hook_vpn_folder(tree):
+    """Vpn and VpnManagerService: the Secure Folder rides, and its VPN chains through, the main VPN."""
+    base = tree / "frameworks/base/services/core/java/com/android/server"
+    vpn, vms = base / "connectivity/Vpn.java", base / "VpnManagerService.java"
+    for p in (vpn, vms):
+        if not p.exists():
+            raise HookError(f"missing {p.relative_to(tree)}")
+    out = {}
+    s = vpn.read_text()
+    if f"{MARK}: helpers for AnonVpnRoute" not in s:
+        for needed in ("NetworkAgent mNetworkAgent", "String mPackage", "int mOwnerUID", "int mUserId",
+                       "VpnConfig.LEGACY_VPN",
+                       "VpnConfig mConfig", "NetworkCapabilities mNetworkCapabilities", "boolean mLockdown",
+                       "void setVpnForcedLocked(boolean", "doSendNetworkCapabilities(", "mContext"):
+            if needed not in s:
+                raise HookError(f"Vpn.java: {needed} not found")
+        cls = re.search(r"\npublic class Vpn \{\n", s)
+        meth = re.search(r"Set<Range<Integer>> createUserAndRestrictedProfilesRanges\(@UserIdInt int userId,"
+                         r"\s*@Nullable List<String> allowedApplications,\s*@Nullable List<String> disallowedApplications\)\s*\{\n", s)
+        state = re.search(r"protected void updateState\(DetailedState detailedState, String reason\) \{\n", s)
+        if not (cls and meth and state):
+            raise HookError("Vpn.java: class, createUserAndRestrictedProfilesRanges(...) or updateState(...) not found")
+        ret = s.find("        return ranges;\n", meth.end())
+        if ret < 0 or ret > meth.end() + 2500:
+            raise HookError("Vpn.createUserAndRestrictedProfilesRanges: return ranges; not found")
+        # Insert from the end of the file backwards, so earlier offsets stay valid.
+        edits = sorted([(cls.end(), VPN_HELPERS), (meth.end(), VPN_SELF), (ret, VPN_FOLDER),
+                        (state.end(), "        AnonVpnRoute.changed(); // " + MARK + "\n")], reverse=True)
+        for at, text in edits:
+            s = s[:at] + text.format(mark=MARK) + s[at:]
+        out[vpn] = s
+    t = vms.read_text()
+    if "AnonVpnRoute.register(" not in t:
+        put, drop = "mVpns.put(userId, userVpn);", "mVpns.delete(userId);"
+        if t.count(put) != 1 or t.count(drop) != 1:
+            raise HookError("VpnManagerService.java: mVpns.put/delete(userId) not found once")
+        t = t.replace(put, put + "\n            com.android.server.connectivity.AnonVpnRoute.register(mContext, userId, userVpn);")
+        t = t.replace(drop, drop + "\n            com.android.server.connectivity.AnonVpnRoute.unregister(userId);")
+        out[vms] = t
+    dst = vpn.parent / "AnonVpnRoute.java"
+    text = (HERE / "hooks/frameworks/AnonVpnRoute.java").read_text()
+    if not dst.exists() or dst.read_text() != text:
+        out[dst] = text
+    return out
+
+
+FWMARK_HELPER = """
+// {mark}: AnonpheneOS Secure Folder VPN chaining (docs/design/VPN.md). system_server publishes
+// "uid:netId" pairs in anon.vpn.carried: the VPN app running inside a Secure Folder (uid) has
+// its protected tunnel sockets carried by its owner's VPN (netId), or by the unreachable network
+// when that VPN is meant to be on but isn't up. Read only for VPN apps' protected sockets.
+static unsigned anonCarrierNetId(uid_t uid) {{
+    const std::string carried = android::base::GetProperty("anon.vpn.carried", "");
+    if (carried.empty()) return NETID_UNSET;
+    for (const std::string& entry : android::base::Split(carried, ",")) {{
+        const std::vector<std::string> kv = android::base::Split(entry, ":");
+        unsigned u = 0, net = 0;
+        if (kv.size() == 2 && android::base::ParseUint(kv[0], &u) &&
+            android::base::ParseUint(kv[1], &net) && u == uid) {{
+            return net;
+        }}
+    }}
+    return NETID_UNSET;
+}}
+"""
+
+
+def hook_vpn_netd(tree):
+    """netd FwmarkServer: a Secure Folder VPN's protected sockets go through the owner's VPN."""
+    p = tree / "system/netd/server/FwmarkServer.cpp"
+    if not p.exists():
+        raise HookError(f"missing {p.relative_to(tree)}")
+    s = p.read_text()
+    if "anonCarrierNetId(" in s:
+        return {}
+    inc = "#include <android-base/properties.h>\n"
+    ns = re.search(r"\nnamespace android(::net)? \{\n|\nnamespace net \{\n", s)
+    line = "fwmark.netId = mNetworkController->getDefaultNetwork();"
+    if inc not in s or not ns or s.count(line) != 2:
+        raise HookError("FwmarkServer.cpp: includes, namespace, or the two protected-socket default-network lines not found")
+    s = s.replace(inc, inc + "#include <android-base/parseint.h>\n#include <android-base/strings.h>\n", 1)
+    ns = re.search(r"\nnamespace android(::net)? \{\n|\nnamespace net \{\n", s)
+    s = s[: ns.end()] + FWMARK_HELPER.format(mark=MARK) + s[ns.end():]
+
+    def carried(m):
+        ind = m.group(1)
+        return (f"{ind}if (const unsigned anonNet = anonCarrierNetId(client->getUid());\n"
+                f"{ind}        anonNet != NETID_UNSET) {{\n"
+                f"{ind}    // {MARK}: tunnel carried by the owner's VPN (see anonCarrierNetId).\n"
+                f"{ind}    fwmark.netId = anonNet;\n"
+                f"{ind}    fwmark.explicitlySelected = true;\n"
+                f"{ind}}} else {{\n"
+                f"{ind}    {line}\n"
+                f"{ind}}}")
+    s = re.sub(r"^([ \t]*)" + re.escape(line), carried, s, flags=re.M)
+    if "client->getUid()" not in s:
+        raise HookError("FwmarkServer.cpp: client->getUid() not used")
+    return {p: s}
+
+
 HOOKS = [hook_product, hook_settings, hook_hide_people, hook_share_list, hook_share_tabs,
-         hook_folder_gate, hook_launcher, hook_phone_number, hook_phone_blank, hook_mobile_data]
+         hook_folder_gate, hook_launcher, hook_phone_number, hook_phone_blank, hook_mobile_data,
+         hook_vpn_folder, hook_vpn_netd]
 
 
 OURS = ".anonphene-copy"

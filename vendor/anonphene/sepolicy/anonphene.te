@@ -15,3 +15,9 @@ allow init {
     misc_logd_file
     perfetto_traces_data_file
 }:dir relabelto;
+
+# Secure Folder VPN chaining (docs/design/VPN.md): system_server publishes which VPN carries
+# the folder VPN's tunnel; netd reads it for VPN apps' protected sockets. Nobody else may.
+system_internal_prop(anon_vpn_prop)
+set_prop(system_server, anon_vpn_prop)
+get_prop(netd, anon_vpn_prop)

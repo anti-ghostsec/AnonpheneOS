@@ -28,6 +28,11 @@ adds:
 - **Mobile data is a permission, off by default.** Installed apps use Wi-Fi until you allow them
   mobile data, so your carrier never carries their traffic and can't attach or confirm your
   number for them ("silent number verification").
+- **The Secure Folder goes through your VPN.** With no VPN of its own, the folder uses the main
+  side's VPN, and the main side's "Block connections without VPN" covers it. A VPN or Tor you run
+  inside the folder is carried inside the main VPN, so your carrier sees only the main VPN, and the
+  folder's VPN never learns your real address. One switch turns it off
+  ([design](docs/design/VPN.md)).
 - **Secure deletion.** Deleting the Secure Folder erases its key from the phone's secure hardware.
   Files can be shredded (overwritten, deleted, then the free space trimmed), and the photo trash
   is emptied at every boot instead of after 30 days.
@@ -53,6 +58,7 @@ adds:
 | Ways into the private profile | App drawer, Settings | Dialer code, icon, disguised icon, Quick Settings tile (your choice) |
 | Share sheet | Every app that can receive, plus people, with Personal / Private tabs | Only the apps on your share list (per app if you like), no people, no tabs: only the side you're on, as on Motorola |
 | Sharing between profiles | Android's own way | Also "Into Secure Folder" / "Outside Secure Folder" share targets |
+| Secure Folder and VPN | The main VPN doesn't cover the private profile; a VPN inside it goes out on its own | The folder uses the main VPN; a VPN inside it runs inside the main VPN (switchable) |
 | Phone number | Apps with the phone, SMS or phone-number permission | Only the phone-number permission or the default SMS app; any app can be given a blank number |
 | Mobile data | Every app with internet access | Installed apps only once you allow it (built-in apps always) |
 | Photo trash | Emptied after 30 days | Emptied at every boot, or now from Settings |
@@ -180,6 +186,10 @@ resources, the no-logs settings, and a scan for private details.
   carrier's own services work. Android decides "mobile data" by whether a network is metered:
   a mobile plan your carrier marks unmetered isn't covered, and a metered Wi-Fi (a hotspot) is
   closed to those apps too. A VPN running over mobile data counts as mobile data as well.
+- **The VPN routing for the Secure Folder hasn't run yet.** It changes Android's VPN service and
+  netd, so it only works in a built image. One part (sending a folder VPN through an always-on main
+  VPN that's down to the "unreachable" network) depends on how netd treats that network and needs
+  checking on a device. One VPN per side remains Android's limit until step 3 of the design is built.
 - **The default phone and SMS apps and the SIM's carrier app can always read the number**
   unless you give them a blank one, which may break MMS or the carrier's features.
 - **The GSI is weaker than the Pixel build.** Its bootloader stays unlocked, so someone with the

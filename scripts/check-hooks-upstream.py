@@ -36,6 +36,11 @@ FILES = {
         "frameworks/base/+/{ref}/telephony/common/com/android/internal/telephony/TelephonyPermissions.java",
     "frameworks/base/services/core/java/com/android/server/net/NetworkPolicyManagerService.java":
         "frameworks/base/+/{ref}/services/core/java/com/android/server/net/NetworkPolicyManagerService.java",
+    "frameworks/base/services/core/java/com/android/server/connectivity/Vpn.java":
+        "frameworks/base/+/{ref}/services/core/java/com/android/server/connectivity/Vpn.java",
+    "frameworks/base/services/core/java/com/android/server/VpnManagerService.java":
+        "frameworks/base/+/{ref}/services/core/java/com/android/server/VpnManagerService.java",
+    "system/netd/server/FwmarkServer.cpp": "system/netd/+/{ref}/server/FwmarkServer.cpp",
     "packages/apps/Launcher3/src/com/android/launcher3/allapps/PrivateProfileManager.java":
         "packages/apps/Launcher3/+/{ref}/src/com/android/launcher3/allapps/PrivateProfileManager.java",
 }

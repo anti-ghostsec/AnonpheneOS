@@ -25,6 +25,16 @@ final class Store {
     /** Settings.Secure keys read by AnonpheneOS's telephony and network-policy hooks. */
     static final String PHONE_NUMBER_BLANK = "anon_phone_number_blank";
     static final String MOBILE_DATA_ALLOWED = "anon_mobile_data_allowed";
+    static final String FOLDER_VIA_MAIN_VPN = "anon_folder_via_main_vpn";
+
+    /** On unless switched off: the Secure Folder, and any VPN inside it, go through the main VPN. */
+    static boolean folderViaMainVpn(Context ctx) {
+        return Settings.Secure.getInt(ctx.getContentResolver(), FOLDER_VIA_MAIN_VPN, 1) != 0;
+    }
+
+    static void setFolderViaMainVpn(Context ctx, boolean on) {
+        Settings.Secure.putInt(ctx.getContentResolver(), FOLDER_VIA_MAIN_VPN, on ? 1 : 0);
+    }
 
     /** A comma-separated package list setting, as a set. */
     static java.util.Set<String> packages(Context ctx, String key) {

@@ -95,6 +95,23 @@ Secure Folder is installed in the profile too (`sysconfig/anonphene-user-types.x
   (`getLine1Number`, `SubscriptionManager.getPhoneNumber`, a subscription's number), returns
   "empty" for apps listed in `anon_phone_number_blank`, before any other check.
 
+## Secure Folder and the VPN
+
+Design and reasoning: [design/VPN.md](design/VPN.md).
+
+- `Vpn.createUserAndRestrictedProfilesRanges` decides which apps a VPN covers. The hook adds the
+  user's Secure Folder: all of it, or only the VPN app running inside it while one runs. The
+  folder's own VPN then covers every folder app except its own VPN app. "Block connections without
+  VPN" uses the same ranges, so it covers the folder too.
+- `AnonVpnRoute` (registered by `VpnManagerService` for every user's VPN) recomputes all of this
+  whenever any VPN starts, stops or changes, or the switch changes.
+- netd's `FwmarkServer` would normally put a VPN app's protected tunnel sockets on the bare
+  network. For the folder's VPN app it puts them on the main VPN instead, read from the
+  `anon.vpn.carried` property, or on the unreachable network when the main VPN is always-on but
+  down.
+- Switch: `anon_folder_via_main_vpn`, Settings → AnonpheneOS privacy → Secure Folder uses the
+  main VPN. On by default.
+
 ## Mobile data
 
 - `NetworkPolicyManagerService.isRestrictedByAdminUL` is the check behind the mobile-data

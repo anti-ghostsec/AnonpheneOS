@@ -104,6 +104,18 @@ class Privacy(unittest.TestCase):
         for level in "VDIWEFA":
             self.assertIn(f"on property:persist.log.tag={level}\n    setprop persist.log.tag S", rc)
 
+    def test_vpn_property_is_locked_down(self):
+        te = (ROOT / "vendor/anonphene/sepolicy/anonphene.te").read_text()
+        ctx = (ROOT / "vendor/anonphene/sepolicy/property_contexts").read_text()
+        self.assertIn("anon.vpn.carried    u:object_r:anon_vpn_prop:s0 exact string", ctx)
+        self.assertIn("set_prop(system_server, anon_vpn_prop)", te)
+        self.assertIn("get_prop(netd, anon_vpn_prop)", te)
+        # Only system_server may set it; nothing else gets set_prop on it.
+        self.assertEqual(len(re.findall(r"set_prop\(\w+, anon_vpn_prop\)", te)), 1)
+        route = (ROOT / "hooks/frameworks/AnonVpnRoute.java").read_text()
+        self.assertIn('PROP = "anon.vpn.carried"', route)
+        self.assertIn('"anon.vpn.carried"', (ROOT / "scripts/apply.py").read_text())
+
     def test_no_logging_calls_in_our_code(self):
         for p in list((ROOT / "packages").rglob("*.java")) + list((ROOT / "hooks").rglob("*.java")):
             text = p.read_text()

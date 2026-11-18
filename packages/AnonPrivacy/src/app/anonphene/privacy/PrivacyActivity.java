@@ -103,6 +103,12 @@ public class PrivacyActivity extends Activity {
         mRows.add(new Row(getString(R.string.mobile_data),
                 getString(R.string.mobile_data_summary, Store.packages(this, Store.MOBILE_DATA_ALLOWED).size()),
                 this::editMobileData));
+        mRows.add(new Row(getString(R.string.folder_vpn),
+                getString(Store.folderViaMainVpn(this) ? R.string.folder_vpn_on : R.string.folder_vpn_off),
+                () -> {
+                    Store.setFolderViaMainVpn(this, !Store.folderViaMainVpn(this));
+                    rebuild();
+                }));
         boolean hide = Store.hidePeople(this);
         mRows.add(new Row(getString(R.string.hide_people), getString(hide ? R.string.on : R.string.off),
                 () -> {

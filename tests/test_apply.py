@@ -87,6 +87,56 @@ FILES = {
         "        return restrictedUids != null && restrictedUids.contains(uid);\n"
         "    }\n"
         "}\n"),
+    "frameworks/base/services/core/java/com/android/server/connectivity/Vpn.java": (
+        "import com.android.internal.net.VpnConfig;\n"
+        "public class Vpn {\n"
+        "    protected final Context mContext;\n"
+        "    @GuardedBy(\"this\") protected String mPackage;\n"
+        "    private int mOwnerUID;\n"
+        "    protected VpnConfig mConfig;\n"
+        "    protected NetworkAgent mNetworkAgent;\n"
+        "    protected NetworkCapabilities mNetworkCapabilities;\n"
+        "    protected boolean mLockdown = false;\n"
+        "    private final int mUserId;\n"
+        "    // uses VpnConfig.LEGACY_VPN\n"
+        "    protected void updateState(DetailedState detailedState, String reason) {\n"
+        "        mState = detailedState;\n"
+        "    }\n"
+        "    Set<Range<Integer>> createUserAndRestrictedProfilesRanges(@UserIdInt int userId,\n"
+        "            @Nullable List<String> allowedApplications,\n"
+        "            @Nullable List<String> disallowedApplications) {\n"
+        "        final Set<Range<Integer>> ranges = new ArraySet<>();\n"
+        "        addUserToRanges(ranges, userId, allowedApplications, disallowedApplications);\n"
+        "        return ranges;\n"
+        "    }\n"
+        "    private void setVpnForcedLocked(boolean enforce) {}\n"
+        "    private static void doSendNetworkCapabilities(NetworkAgent a, NetworkCapabilities nc) {}\n"
+        "}\n"),
+    "frameworks/base/services/core/java/com/android/server/VpnManagerService.java": (
+        "public class VpnManagerService {\n"
+        "    private void onUserStarted(int userId) {\n"
+        "            mVpns.put(userId, userVpn);\n"
+        "    }\n"
+        "    private void onUserStopped(int userId) {\n"
+        "            mVpns.delete(userId);\n"
+        "    }\n"
+        "}\n"),
+    "system/netd/server/FwmarkServer.cpp": (
+        "#include <android-base/properties.h>\n"
+        "namespace android {\n"
+        "namespace net {\n"
+        "int FwmarkServer::processClient(SocketClient* client, int* socketFd) {\n"
+        "                } else if (!mNetworkController->isVirtualNetwork(fwmark.netId)) {\n"
+        "                    fwmark.netId = mNetworkController->getDefaultNetwork();\n"
+        "                }\n"
+        "            if (!fwmark.explicitlySelected && mNetworkController->isVirtualNetwork(fwmark.netId)) {\n"
+        "                fwmark.netId = mNetworkController->getDefaultNetwork();\n"
+        "            }\n"
+        "            fwmark.protectedFromVpn = true;\n"
+        "    return client->getUid();\n"
+        "}\n"
+        "}  // namespace net\n"
+        "}  // namespace android\n"),
     "packages/apps/Launcher3/src/com/android/launcher3/allapps/PrivateProfileManager.java": (
         "public class PrivateProfileManager {\n"
         "    public boolean isPrivateSpaceHidden() {\n"
@@ -177,6 +227,21 @@ class Apply(unittest.TestCase):
             self.assertIn("|| AnonMobileData.blocks(uid);", np_)
             self.assertLess(np_.index("mMultipathPolicyTracker.start();"), np_.index("AnonMobileData.start("))
             self.assertTrue(next(t.rglob("NetworkPolicyManagerService.java")).with_name("AnonMobileData.java").is_file())
+            vpn = next(t.rglob("Vpn.java")).read_text()
+            self.assertLess(vpn.index("synchronized String[] anonPackages()"), vpn.index("protected final Context mContext"))
+            self.assertLess(vpn.index("AnonVpnRoute.changed();"), vpn.index("mState = detailedState;"))
+            self.assertLess(vpn.index("AnonVpnRoute.folderVpnPackage(userId)"), vpn.index("final Set<Range<Integer>> ranges"))
+            self.assertLess(vpn.index("AnonVpnRoute.carriedFolders(mContext, userId)"), vpn.index("        return ranges;"))
+            self.assertNotIn("mPackage != null && AnonVpnRoute", vpn)  # guarded field read only under the lock
+            vms = next(t.rglob("VpnManagerService.java")).read_text()
+            self.assertIn("mVpns.put(userId, userVpn);\n            com.android.server.connectivity.AnonVpnRoute.register(", vms)
+            self.assertIn("mVpns.delete(userId);\n            com.android.server.connectivity.AnonVpnRoute.unregister(", vms)
+            self.assertTrue(next(t.rglob("Vpn.java")).with_name("AnonVpnRoute.java").is_file())
+            fw = next(t.rglob("FwmarkServer.cpp")).read_text()
+            self.assertEqual(fw.count("anonCarrierNetId(client->getUid())"), 2)
+            self.assertEqual(fw.count("fwmark.netId = mNetworkController->getDefaultNetwork();"), 2)  # kept as the fallback
+            self.assertLess(fw.index("static unsigned anonCarrierNetId"), fw.index("namespace net {"))
+            self.assertIn("#include <android-base/strings.h>", fw)
             ir = t / "packages/modules/IntentResolver/java/src"
             self.assertTrue((ir / "com/android/intentresolver/AnonShareFilter.java").is_file())
             self.assertTrue((ir / "app/anonphene/sharelist/ShareList.java").is_file())
