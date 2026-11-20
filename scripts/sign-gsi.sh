@@ -23,8 +23,17 @@ src=$(cd "${1:?source dir}" && pwd)
 cd "$src"
 
 [[ -d keys/gsi ]] || { echo "sign-gsi: no keys in $src/keys/gsi. Make them once: cd $src && script/generate-keys gsi" >&2; exit 1; }
-target_files=$(ls out/target/product/generic_arm64/obj/PACKAGING/target_files_intermediates/*-target_files*.zip 2>/dev/null | head -n1)
-[[ -n $target_files ]] || { echo "sign-gsi: no GSI target files; run scripts/build.sh gsi <tag> first" >&2; exit 1; }
+shopt -s nullglob
+candidates=(out/target/product/generic_arm64/obj/PACKAGING/target_files_intermediates/*-target_files*.zip)
+shopt -u nullglob
+(( ${#candidates[@]} > 0 )) || { echo "sign-gsi: no GSI target files; run scripts/build.sh gsi <tag> first" >&2; exit 1; }
+if (( ${#candidates[@]} > 1 )); then
+    # Never guess which build to sign.
+    echo "sign-gsi: more than one set of GSI target files; remove the old ones first:" >&2
+    printf '  %s\n' "${candidates[@]}" >&2
+    exit 1
+fi
+target_files=${candidates[0]}
 
 # The signing command, as GrapheneOS's release script runs it: from `sign_target_files_apks` to
 # the line that names its input and output files (left out; ours are added below).

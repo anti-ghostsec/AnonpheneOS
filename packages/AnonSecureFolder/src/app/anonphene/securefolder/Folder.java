@@ -179,9 +179,14 @@ final class Folder {
             boolean right = res.isMatched();
             if (!right && !res.isCredCertainlyIncorrect()) {
                 // Rate-limited, or the check itself failed: the credential may still be right, so
-                // this isn't a wrong guess and must never count toward wiping the folder.
+                // this try never wipes the folder by itself.
                 um.requestQuietModeEnabled(true, folder);
-                prefs(ctx).edit().putInt(KEY_WRONG, wrong - 1).commit();
+                if (res.isOtherError() && !res.hasTimeout()) {
+                    // The check never ran, so no guess was used: the try is given back. A
+                    // rate-limited try still counts, because some phones report a wrong guess
+                    // made during a lockout as "try again later" (VerifyCredentialResponse).
+                    prefs(ctx).edit().putInt(KEY_WRONG, wrong - 1).commit();
+                }
                 return Unlock.THROTTLED;
             }
             if (!right) {
