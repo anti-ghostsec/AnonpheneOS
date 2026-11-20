@@ -179,18 +179,11 @@ public class FolderActivity extends Activity {
 
     /** Off the main thread, from the form. */
     private void unlock(char[] pass, List<byte[]> keyfiles) {
-        FolderKey.Params params = Folder.params(this);
-        if (params == null) {
+        if (Folder.params(this) == null) {
             runOnUiThread(() -> mForm.status(R.string.key_no_params));
             return;
         }
-        byte[] cred = FolderKey.credential(pass, keyfiles, params);
-        Folder.Unlock result;
-        try {
-            result = Folder.unlock(this, cred);
-        } finally {
-            Arrays.fill(cred, (byte) 0);
-        }
+        Folder.Unlock result = Folder.unlock(this, p -> FolderKey.credential(pass, keyfiles, p));
         runOnUiThread(() -> {
             switch (result) {
                 case OK: mState = null; refresh(); break;
@@ -204,20 +197,23 @@ public class FolderActivity extends Activity {
     }
 
     private void changeKey() {
-        byte[][] old = new byte[1][];
         showForm(new KeyForm(this, KeyForm.Mode.UNLOCK, (pass, keyfiles) -> {
-            FolderKey.Params params = Folder.params(this);
-            if (params == null) return;
-            old[0] = FolderKey.credential(pass, keyfiles, params);
+            if (Folder.params(this) == null) return;
+            // Kept until the new key is chosen (the form wipes its own copies when it returns):
+            // the old credential is made from them then, for whichever key settings Android has.
+            char[] oldPass = pass.clone();
+            List<byte[]> oldFiles = new ArrayList<>();
+            for (byte[] k : keyfiles) oldFiles.add(k.clone());
             runOnUiThread(() -> showForm(new KeyForm(this, KeyForm.Mode.CHANGE, (p2, k2) -> {
                 FolderKey.Params fresh = FolderKey.Params.strong(new SecureRandom());
                 byte[] cred = FolderKey.credential(p2, k2, fresh);
                 boolean ok;
                 try {
-                    ok = Folder.changeKey(this, fresh, old[0], cred);
+                    ok = Folder.changeKey(this, p -> FolderKey.credential(oldPass, oldFiles, p), fresh, cred);
                 } finally {
                     Arrays.fill(cred, (byte) 0);
-                    Arrays.fill(old[0], (byte) 0);
+                    Arrays.fill(oldPass, '\0');
+                    for (byte[] k : oldFiles) Arrays.fill(k, (byte) 0);
                 }
                 runOnUiThread(() -> {
                     if (ok) {

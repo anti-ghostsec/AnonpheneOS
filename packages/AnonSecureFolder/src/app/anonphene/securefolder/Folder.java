@@ -5,6 +5,7 @@ package app.anonphene.securefolder;
 
 import android.app.ActivityManager;
 import android.content.ComponentName;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.LauncherActivityInfo;
@@ -32,6 +33,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * The Secure Folder is Android's private profile (the one Android calls Private Space), kept
@@ -56,9 +58,18 @@ final class Folder {
     private static final String PREFS = "folder";
     private static final String KEY_CODE_SALT = "code_salt";
     private static final String KEY_CODE_HASH = "code_hash";
-    private static final String KEY_PARAMS = "key_params";
-    private static final String KEY_WRONG = "wrong_tries";
-    private static final String KEY_WIPE_AFTER = "wipe_after";
+    // The folder's key settings, wrong-try count and wipe limit live in the folder profile's own
+    // Settings.Secure, not in this app's files: "Clear storage" can't reset the count or turn the
+    // wipe off (or lose the salt and lock you out), they go with the folder when it's deleted,
+    // and apps on the main side can't read them.
+    private static final String KEY_PARAMS = "anon_folder_key_params";
+    /** New key settings while a change of key is in progress; see {@link #changeKey}. */
+    private static final String KEY_PENDING = "anon_folder_key_pending";
+    private static final String KEY_WRONG = "anon_folder_wrong_tries";
+    private static final String KEY_WIPE_AFTER = "anon_folder_wipe_after";
+    // Where earlier versions kept them, in this app's own preferences; moved on first use.
+    private static final String OLD_PARAMS = "key_params", OLD_WRONG = "wrong_tries",
+            OLD_WIPE_AFTER = "wipe_after";
     /** Choices for "delete the folder after N wrong passphrases"; 0 is off. */
     static final int[] WIPE_CHOICES = {0, 3, 5, 10, 20};
 
@@ -129,7 +140,9 @@ final class Folder {
             if (!lpu.setLockCredential(cred, LockscreenCredential.createNone(), folder.getIdentifier())) {
                 throw new IllegalStateException("Android refused the folder's lock");
             }
-            prefs(ctx).edit().putString(KEY_PARAMS, params.serialize()).putInt(KEY_WRONG, 0).commit();
+            ContentResolver st = store(ctx, folder);
+            putOrFail(st, KEY_PARAMS, params.serialize());
+            putOrFail(st, KEY_WRONG, "0");
             applyDefaults(ctx);
             setShareTargets(ctx, folder, true);
             ok = true;
@@ -143,7 +156,24 @@ final class Folder {
 
     /** The folder's Argon2id settings and salt, or null when it wasn't made here. */
     static FolderKey.Params params(Context ctx) {
-        String s = prefs(ctx).getString(KEY_PARAMS, null);
+        UserHandle folder = find(ctx);
+        return folder == null ? null : parse(store(ctx, folder), KEY_PARAMS);
+    }
+
+    /**
+     * The key settings to try, current first: also the new ones when a change of key was cut off
+     * before it was recorded as done, since Android may already have the new lock.
+     */
+    private static List<FolderKey.Params> candidates(ContentResolver st) {
+        List<FolderKey.Params> out = new ArrayList<>(2);
+        FolderKey.Params cur = parse(st, KEY_PARAMS), pending = parse(st, KEY_PENDING);
+        if (cur != null) out.add(cur);
+        if (pending != null) out.add(pending);
+        return out;
+    }
+
+    private static FolderKey.Params parse(ContentResolver st, String key) {
+        String s = Settings.Secure.getString(st, key);
         try {
             return s == null ? null : FolderKey.Params.parse(s);
         } catch (IllegalArgumentException e) {
@@ -152,80 +182,156 @@ final class Folder {
     }
 
     /**
-     * Unlocks with a credential from {@link FolderKey#credential}. The profile is started without
+     * Unlocks with the passphrase and keyfiles, turned into a credential by {@code derive}
+     * ({@link FolderKey#credential} with the settings given). The profile is started without
      * Android's prompt, and its storage opens only if the credential is right. Too many wrong
      * ones delete the folder when that's switched on. Runs off the main thread.
      */
-    static Unlock unlock(Context ctx, byte[] credential) {
+    static Unlock unlock(Context ctx, Function<FolderKey.Params, byte[]> derive) {
         UserHandle folder = find(ctx);
         if (folder == null) return Unlock.NO_FOLDER;
+        ContentResolver st = store(ctx, folder);
+        List<FolderKey.Params> tries = candidates(st);
+        if (tries.isEmpty()) return Unlock.UNSUPPORTED;
         UserManager um = ctx.getSystemService(UserManager.class);
         // Counted as wrong before checking, and cleared only when right, so stopping the app
-        // mid-check can't save a guess from the count.
-        int wrong = prefs(ctx).getInt(KEY_WRONG, 0) + 1;
-        prefs(ctx).edit().putInt(KEY_WRONG, wrong).commit();
-        LockscreenCredential cred = toCredential(credential);
+        // mid-check can't save a guess from the count. If the count can't be stored, no check.
+        int wrong = Settings.Secure.getInt(st, KEY_WRONG, 0) + 1;
+        if (!Settings.Secure.putInt(st, KEY_WRONG, wrong)) return Unlock.UNSUPPORTED;
+        // The profile starts with its storage still locked (Android's prompt is skipped for
+        // Secure Folder only, by AnonpheneOS's UserManagerService gate); the folder's credential
+        // then opens it. A wrong one stops it again.
         try {
-            // The profile starts with its storage still locked (Android's prompt is skipped
-            // for Secure Folder only, by AnonpheneOS's UserManagerService gate); the folder's
-            // credential then opens it. A wrong one stops it again.
+            startWithoutPrompt(um, folder);
+        } catch (IllegalArgumentException | SecurityException e) {
+            return Unlock.UNSUPPORTED;
+        }
+        LockPatternUtils lpu = new LockPatternUtils(ctx);
+        boolean throttled = false, giveBack = true;
+        for (FolderKey.Params p : tries) {
+            byte[] raw = derive.apply(p);
+            LockscreenCredential cred = toCredential(raw);
+            Arrays.fill(raw, (byte) 0);
+            VerifyCredentialResponse res;
             try {
-                startWithoutPrompt(um, folder);
-            } catch (IllegalArgumentException | SecurityException e) {
-                return Unlock.UNSUPPORTED;
+                res = lpu.checkCredential(cred, folder.getIdentifier(), null);
+            } finally {
+                cred.zeroize();
             }
-            VerifyCredentialResponse res =
-                    new LockPatternUtils(ctx).checkCredential(cred, folder.getIdentifier(), null);
-            boolean right = res.isMatched();
-            if (!right && !res.isCredCertainlyIncorrect()) {
+            if (res.isMatched()) {
+                if (p != tries.get(0)) {
+                    // The cut-off change of key did reach Android: finish recording it.
+                    Settings.Secure.putString(st, KEY_PARAMS, p.serialize());
+                }
+                Settings.Secure.putString(st, KEY_PENDING, null);
+                Settings.Secure.putInt(st, KEY_WRONG, 0);
+                return Unlock.OK;
+            }
+            if (!res.isCredCertainlyIncorrect()) {
                 // Rate-limited, or the check itself failed: the credential may still be right, so
                 // this try never wipes the folder by itself.
-                um.requestQuietModeEnabled(true, folder);
-                if (res.isOtherError() && !res.hasTimeout()) {
-                    // The check never ran, so no guess was used: the try is given back. A
-                    // rate-limited try still counts, because some phones report a wrong guess
-                    // made during a lockout as "try again later" (VerifyCredentialResponse).
-                    prefs(ctx).edit().putInt(KEY_WRONG, wrong - 1).commit();
-                }
-                return Unlock.THROTTLED;
+                throttled = true;
+                // The check never ran, so no guess was used: the try is given back. A
+                // rate-limited try still counts, because some phones report a wrong guess made
+                // during a lockout as "try again later" (VerifyCredentialResponse).
+                giveBack &= res.isOtherError() && !res.hasTimeout();
+                break;
             }
-            if (!right) {
-                um.requestQuietModeEnabled(true, folder);
-                int limit = wipeAfter(ctx);
-                if (limit > 0 && wrong >= limit) {
-                    delete(ctx, folder);
-                    return Unlock.WIPED;
-                }
-                return Unlock.WRONG;
-            }
-            prefs(ctx).edit().putInt(KEY_WRONG, 0).commit();
-            return Unlock.OK;
-        } finally {
-            cred.zeroize();
+            giveBack = false;
         }
+        um.requestQuietModeEnabled(true, folder);
+        if (throttled) {
+            if (giveBack) Settings.Secure.putInt(st, KEY_WRONG, wrong - 1);
+            return Unlock.THROTTLED;
+        }
+        int limit = Settings.Secure.getInt(st, KEY_WIPE_AFTER, 0);
+        if (limit > 0 && wrong >= limit) {
+            delete(ctx, folder);
+            return Unlock.WIPED;
+        }
+        return Unlock.WRONG;
     }
 
-    /** Changes the passphrase or keyfiles; the folder must be unlocked. */
-    static boolean changeKey(Context ctx, FolderKey.Params newParams, byte[] oldCred, byte[] newCred) {
+    /**
+     * Changes the passphrase or keyfiles; the folder must be unlocked. {@code oldDerive} turns
+     * the old passphrase and keyfiles into a credential for the settings given.
+     *
+     * <p>The new settings are stored as pending before Android changes the lock, and made current
+     * only after: if the phone dies in between, unlocking tries both, so the folder is never left
+     * with a lock that no stored settings can make.
+     */
+    static boolean changeKey(Context ctx, Function<FolderKey.Params, byte[]> oldDerive,
+            FolderKey.Params newParams, byte[] newCred) {
         UserHandle folder = find(ctx);
         if (folder == null) return false;
-        LockscreenCredential o = toCredential(oldCred), n = toCredential(newCred);
+        ContentResolver st = store(ctx, folder);
+        List<FolderKey.Params> olds = candidates(st);
+        if (olds.isEmpty()) return false;
+        LockPatternUtils lpu = new LockPatternUtils(ctx);
+        LockscreenCredential n = toCredential(newCred);
         try {
-            boolean ok = new LockPatternUtils(ctx).setLockCredential(n, o, folder.getIdentifier());
-            if (ok) prefs(ctx).edit().putString(KEY_PARAMS, newParams.serialize()).commit();
-            return ok;
+            for (FolderKey.Params p : olds) {
+                // Check first, so a wrong old passphrase changes nothing.
+                byte[] raw = oldDerive.apply(p);
+                LockscreenCredential o = toCredential(raw);
+                Arrays.fill(raw, (byte) 0);
+                try {
+                    if (!lpu.checkCredential(o, folder.getIdentifier(), null).isMatched()) continue;
+                    if (!Settings.Secure.putString(st, KEY_PENDING, newParams.serialize())) return false;
+                    if (!lpu.setLockCredential(n, o, folder.getIdentifier())) {
+                        Settings.Secure.putString(st, KEY_PENDING, null);
+                        return false;
+                    }
+                    Settings.Secure.putString(st, KEY_PARAMS, newParams.serialize());
+                    Settings.Secure.putString(st, KEY_PENDING, null);
+                    return true;
+                } finally {
+                    o.zeroize();
+                }
+            }
+            return false;
         } finally {
-            o.zeroize();
             n.zeroize();
         }
     }
 
     static int wipeAfter(Context ctx) {
-        return prefs(ctx).getInt(KEY_WIPE_AFTER, 0);
+        UserHandle folder = find(ctx);
+        return folder == null ? 0 : Settings.Secure.getInt(store(ctx, folder), KEY_WIPE_AFTER, 0);
     }
 
     static void setWipeAfter(Context ctx, int n) {
-        prefs(ctx).edit().putInt(KEY_WIPE_AFTER, n).commit();
+        UserHandle folder = find(ctx);
+        if (folder != null) Settings.Secure.putInt(store(ctx, folder), KEY_WIPE_AFTER, n);
+    }
+
+    /**
+     * The folder profile's own Settings.Secure. Only the system and apps with cross-user access
+     * can read another user's settings; writing them needs WRITE_SECURE_SETTINGS as well.
+     * Settings kept by earlier versions in this app's preferences are moved here on first use.
+     */
+    private static ContentResolver store(Context ctx, UserHandle folder) {
+        ContentResolver st = ctx.createContextAsUser(folder, 0).getContentResolver();
+        SharedPreferences old = prefs(ctx);
+        if (old.contains(OLD_PARAMS) || old.contains(OLD_WRONG) || old.contains(OLD_WIPE_AFTER)) {
+            boolean moved = true;
+            if (Settings.Secure.getString(st, KEY_PARAMS) == null && old.contains(OLD_PARAMS)) {
+                moved &= Settings.Secure.putString(st, KEY_PARAMS, old.getString(OLD_PARAMS, null));
+            }
+            int wrong = Math.max(old.getInt(OLD_WRONG, 0), Settings.Secure.getInt(st, KEY_WRONG, 0));
+            moved &= Settings.Secure.putInt(st, KEY_WRONG, wrong);
+            if (Settings.Secure.getString(st, KEY_WIPE_AFTER) == null) {
+                moved &= Settings.Secure.putInt(st, KEY_WIPE_AFTER, old.getInt(OLD_WIPE_AFTER, 0));
+            }
+            if (moved) old.edit().remove(OLD_PARAMS).remove(OLD_WRONG).remove(OLD_WIPE_AFTER).commit();
+        }
+        return st;
+    }
+
+    private static void putOrFail(ContentResolver st, String key, String value) {
+        if (!Settings.Secure.putString(st, key, value)) {
+            throw new IllegalStateException("couldn't store the folder's settings");
+        }
     }
 
     /**
@@ -269,7 +375,8 @@ final class Folder {
     /** Deletes the folder, its apps and data, and its key. */
     static boolean delete(Context ctx, UserHandle folder) {
         setShareTargets(ctx, folder, false);
-        prefs(ctx).edit().remove(KEY_PARAMS).remove(KEY_WRONG).commit();
+        // Its settings (key settings, count, wipe limit) are removed with the profile.
+        prefs(ctx).edit().remove(OLD_PARAMS).remove(OLD_WRONG).remove(OLD_WIPE_AFTER).commit();
         return ctx.getSystemService(UserManager.class).removeUser(folder);
     }
 
