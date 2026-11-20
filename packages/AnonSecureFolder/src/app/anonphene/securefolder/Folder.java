@@ -20,6 +20,7 @@ import app.anonphene.folderkey.FolderKey;
 
 import com.android.internal.widget.LockPatternUtils;
 import com.android.internal.widget.LockscreenCredential;
+import com.android.internal.widget.VerifyCredentialResponse;
 
 import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
@@ -173,11 +174,14 @@ final class Folder {
             } catch (IllegalArgumentException | SecurityException e) {
                 return Unlock.UNSUPPORTED;
             }
-            boolean right;
-            try {
-                right = new LockPatternUtils(ctx).checkCredential(cred, folder.getIdentifier(), null);
-            } catch (LockPatternUtils.RequestThrottledException e) {
+            VerifyCredentialResponse res =
+                    new LockPatternUtils(ctx).checkCredential(cred, folder.getIdentifier(), null);
+            boolean right = res.isMatched();
+            if (!right && !res.isCredCertainlyIncorrect()) {
+                // Rate-limited, or the check itself failed: the credential may still be right, so
+                // this isn't a wrong guess and must never count toward wiping the folder.
                 um.requestQuietModeEnabled(true, folder);
+                prefs(ctx).edit().putInt(KEY_WRONG, wrong - 1).commit();
                 return Unlock.THROTTLED;
             }
             if (!right) {
