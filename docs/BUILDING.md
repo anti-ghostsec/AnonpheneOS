@@ -30,7 +30,9 @@ can't find the code it attaches to, and running it twice changes nothing the sec
 
 ## 2. Make your own signing keys (once)
 
-Release images are signed with your own keys, never with test keys. Follow GrapheneOS's build
+Release images are signed with your own keys, never with test keys. For a GSI, `scripts/build.sh gsi`
+does the signing itself (`scripts/sign-gsi.sh`) and refuses to make images if anything is still
+signed with a test key; make its keys once with `script/generate-keys gsi` in the source folder. Follow GrapheneOS's build
 guide, "Generating release signing keys", and keep the keys **outside this repo** (the
 `.gitignore` refuses `keys/`, `*.pk8` and `*.x509.pem` anyway). Keep an offline backup: a
 phone with a locked bootloader only takes updates signed with the same keys.

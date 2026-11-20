@@ -50,10 +50,15 @@ fastboot flashing lock
 
 ## Installing the GSI
 
+`scripts/build.sh gsi <tag>` signs the GSI with your own keys (`scripts/sign-gsi.sh`; make the
+keys once with `script/generate-keys gsi` in the source folder). Never flash an unsigned GSI: it
+carries AOSP's public test keys, so anyone could sign a fake update to a system app. Unzip
+`releases/gsi/gsi-img.zip` in the source folder and flash its `system.img`:
+
 ```bash
 adb reboot bootloader
 fastboot reboot fastboot
-fastboot flash system out/target/product/generic_arm64/system.img
+fastboot flash system system.img
 fastboot reboot bootloader
 fastboot --disable-verity --disable-verification flash vbmeta vbmeta.img
 fastboot -w

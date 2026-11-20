@@ -25,6 +25,15 @@ if (( mem_gb < 28 )); then
     exit 1
 fi
 
+if [[ $target == gsi && ! -d "$src/keys/gsi" ]]; then
+    # Checked before hours of building: a GSI must be signed with your own keys.
+    echo "build.sh: a GSI needs your signing keys in $src/keys/gsi first." >&2
+    echo "          After the sync, make them once: cd $src && script/generate-keys gsi" >&2
+    echo "          (or run this once to sync, make the keys, then run it again)." >&2
+    [[ -d "$src/.repo" ]] && exit 1
+    gsi_keys_missing=1
+fi
+
 mkdir -p "$src"
 cd "$src"
 if [[ ! -d .repo ]]; then
@@ -37,14 +46,22 @@ repo sync -j"$(nproc)" --force-sync --no-clone-bundle --no-tags
 
 python3 "$here/scripts/apply.py" "$src"
 
+if [[ ${gsi_keys_missing:-0} == 1 ]]; then
+    echo "build.sh: synced. Make your GSI keys now: cd $src && script/generate-keys gsi" >&2
+    echo "          then run this again to build and sign." >&2
+    exit 1
+fi
+
 source build/envsetup.sh
 case "$target" in
     gsi)
         # One system image; the phone keeps its own kernel, vendor and firmware.
+        # Target files, then re-signed with your keys: an unsigned image carries AOSP's public
+        # test keys, which would let anyone sign a fake update to a system app.
         lunch gsi_arm64-cur-user
-        m systemimage vbmetaimage
+        m target-files-package otatools-package
+        "$here/scripts/sign-gsi.sh" "$src"
         echo
-        echo "Built: out/target/product/generic_arm64/system.img"
         echo "Flashing it on a phone: see docs/DEVICES.md."
         ;;
     emulator)
@@ -53,6 +70,7 @@ case "$target" in
         m
         echo
         echo "Built. Start it with: emulator -no-snapshot"
+        echo "This image is signed with AOSP's public test keys: for testing only, never for a phone."
         ;;
     *)
         # Vendor files from Google's factory image, as GrapheneOS builds do.
