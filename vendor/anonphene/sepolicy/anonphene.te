@@ -1,11 +1,16 @@
-# init covers the crash-report and log folders with RAM filesystems
-# (init/anonphene.rc) and labels them as the folders they replace.
+# init covers the crash-report, log and usage-history folders with RAM
+# filesystems (init/anonphene.rc) and labels them as the folders they replace.
 allow init {
     tombstone_data_file
     anr_data_file
     dropbox_data_file
     misc_logd_file
     perfetto_traces_data_file
+    system_data_file
+    heapdump_data_file
+    bootstat_data_file
+    stats_data_file
+    apex_tethering_data_file
 }:dir mounton;
 allow init tmpfs:dir relabelfrom;
 allow init {
@@ -14,6 +19,11 @@ allow init {
     dropbox_data_file
     misc_logd_file
     perfetto_traces_data_file
+    system_data_file
+    heapdump_data_file
+    bootstat_data_file
+    stats_data_file
+    apex_tethering_data_file
 }:dir relabelto;
 
 # Secure Folder VPN chaining (docs/design/VPN.md): system_server publishes which VPN carries

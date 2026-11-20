@@ -169,6 +169,9 @@ resources, the no-logs settings, and a scan for private details.
 
 ## Known limits
 
+- **Ways in need the built-in apps.** Secure Folder's app is invisible to apps that aren't part
+  of the system, so its icon and disguised icon show only in the built-in launcher, and the
+  dialer code works only from the built-in Phone app.
 - **The OS hasn't been built yet.** The two apps compile against Android's system API and run on
   the Android 15 emulator (docs/EMULATOR.md), but the hooks into GrapheneOS's code have only been
   tried on small copies of that code, and nothing has run on a phone.

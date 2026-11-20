@@ -21,6 +21,12 @@ Where each feature lives, and what it relies on.
   `/data/system/dropbox`, `/data/misc/logd` and `/data/misc/perfetto-traces` at every boot,
   then covers each with a small RAM filesystem. Anything written there later is gone at power
   off. Leftover bug reports, boot stats, process stats and graphics stats are deleted too.
+- Usage history goes to RAM the same way: which apps were used and when (`UsageStatsService`
+  is pointed at a RAM folder by `scripts/apply.py`, and history an older build left on disk is
+  deleted once each user unlocks), which apps used the camera, microphone or location and when
+  (app-op history), per-app battery and data use, statsd's metrics, boot stats, process and
+  graphics stats, and memory dumps. Settings' battery and data-usage screens start again at
+  every boot, and a data limit counts only since the last boot.
 - If anything sets `persist.log.tag` to another level, the boot script puts it back to `S`.
 - Tracing is off (`persist.traced.enable=0`), tombstoned keeps no tombstones or ANR traces,
   and the Privacy app keeps Android's dropbox to one entry of at most 64 KB for one minute.
@@ -37,6 +43,12 @@ The Secure Folder is Android's private profile (what Android calls Private Space
   Private Space section, locked or unlocked (stock Android 15 shows one while it's unlocked).
   The folder's apps appear only in the folder's own grid (`FolderActivity`), which is excluded
   from recents and blocks screenshots.
+- **Invisible to other apps.** Android already hides the private profile from apps' user and
+  profile lists. `scripts/apply.py` also makes the Secure Folder app itself invisible to every
+  app that isn't part of the system (`AppsFilterBase.shouldFilterApplication`), so no app can
+  tell from its share target, disguised icon or tile that a folder exists. The built-in launcher,
+  Phone app, share sheet and Settings still see it; a third-party launcher can't show its icon
+  or disguised icon, and a third-party dialer can't open it with your code.
 - **Own lock, own key.** `KeyForm` takes a passphrase (12 to 256 characters) and any number of
   keyfiles. `FolderKey` (`vendor/anonphene/lib/folderkey`) turns them into a 256-bit credential
   with Argon2id (256 MB, 4 passes, 4 lanes, random 32-byte salt); keyfiles go in as Argon2id's

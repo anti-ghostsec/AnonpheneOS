@@ -500,7 +500,8 @@ FWMARK_HELPER = """
 // {mark}: AnonpheneOS Secure Folder VPN chaining (docs/design/VPN.md). system_server publishes
 // "uid:netId" pairs in anon.vpn.carried: the VPN app running inside a Secure Folder (uid) has
 // its protected tunnel sockets carried by its owner's VPN (netId), or by the unreachable network
-// when that VPN is meant to be on but isn't up. Read only for VPN apps' protected sockets.
+// when that VPN is meant to be on but isn't up. Read only for VPN apps' protected sockets and
+// their explicit network choices.
 static unsigned anonCarrierNetId(uid_t uid) {{
     const std::string carried = android::base::GetProperty("anon.vpn.carried", "");
     if (carried.empty()) return NETID_UNSET;
@@ -523,8 +524,41 @@ def hook_vpn_netd(tree):
     if not p.exists():
         raise HookError(f"missing {p.relative_to(tree)}")
     s = p.read_text()
-    if "anonCarrierNetId(" in s:
-        return {}
+    orig = s
+    if "anonCarrierNetId(" not in s:
+        s = hook_vpn_netd_protect(s)
+    if "anon-select-network" not in s:
+        s = hook_vpn_netd_select(s)
+    return {} if s == orig else {p: s}
+
+
+SELECT_LINE = re.compile(
+    r"^([ \t]*)fwmark\.protectedFromVpn =\s*\n[ \t]*mNetworkController->canProtect\(client->getUid\(\), command\.netId\);\n",
+    re.M)
+
+
+def hook_vpn_netd_select(s):
+    """A carried folder VPN app that picks a network itself (Network.bindSocket,
+    bindProcessToNetwork) gets its owner's VPN instead of a bare physical network. VPN apps may
+    bypass VPNs on every network (networkSetProtectAllow), so without this the explicit choice
+    skipped the carrying that protect() gets."""
+    hits = SELECT_LINE.findall(s)
+    if len(hits) != 1:
+        raise HookError("FwmarkServer.cpp: SELECT_NETWORK's protectedFromVpn/canProtect lines not found once")
+
+    def add(m):
+        ind = m.group(1)
+        return (m.group(0) +
+                f"{ind}if (const unsigned anonNet = anonCarrierNetId(client->getUid());\n"
+                f"{ind}        anonNet != NETID_UNSET && !mNetworkController->isVirtualNetwork(command.netId)) {{\n"
+                f"{ind}    // {MARK} anon-select-network: a carried folder VPN app can't pick the bare\n"
+                f"{ind}    // network directly either; its choice goes through the owner's VPN (or nowhere).\n"
+                f"{ind}    fwmark.netId = anonNet;\n"
+                f"{ind}}}\n")
+    return SELECT_LINE.sub(add, s, count=1)
+
+
+def hook_vpn_netd_protect(s):
     inc = "#include <android-base/properties.h>\n"
     ns = re.search(r"\nnamespace android(::net)? \{\n|\nnamespace net \{\n", s)
     line = "fwmark.netId = mNetworkController->getDefaultNetwork();"
@@ -547,12 +581,115 @@ def hook_vpn_netd(tree):
     s = re.sub(r"^([ \t]*)" + re.escape(line), carried, s, flags=re.M)
     if "client->getUid()" not in s:
         raise HookError("FwmarkServer.cpp: client->getUid() not used")
-    return {p: s}
+    return s
+
+
+USAGE_RAM = """
+    // {mark}: usage history (which app was used, when) lives in RAM, on the tmpfs that
+    // vendor/anonphene/init/anonphene.rc mounts at {root}. It's gone at power off.
+    private static File anonUsageDir(int userId, String kind) {{
+        final File user = new File("{root}", Integer.toString(userId));
+        user.mkdirs();
+        if ("ce".equals(kind)) anonDropDiskHistory(userId);
+        return new File(user, kind);
+    }}
+
+    /** History an older build left on disk; only reachable once the user is unlocked. */
+    private static void anonDropDiskHistory(int user) {{
+        for (File old : new File[] {{
+                new File(Environment.getDataSystemCeDirectory(user), "usagestats"),
+                new File(Environment.getDataSystemDeDirectory(user), "usagestats")}}) {{
+            if (old.exists()) deleteRecursively(old);
+        }}
+    }}
+"""
+USAGE_ROOT = "/data/system/anon-usagestats"
+USAGE_CE = re.compile(r'new File\(Environment\.getDataSystemCeDirectory\(userId\),\s*"usagestats"\)')
+USAGE_DE = re.compile(r'new File\(Environment\.getDataSystemDeDirectory\(userId\),\s*"usagestats"\)')
+USAGE_DE_DIR = re.compile(
+    r'final File deDir = Environment\.getDataSystemDeDirectory\(userId\);\n(\s*)final File usageStatsDeDir = new File\(deDir, "usagestats"\);')
+
+
+def hook_usage_ram(tree):
+    """UsageStatsService: per-user usage history is kept in RAM instead of /data/system_{ce,de}."""
+    p = tree / "frameworks/base/services/usage/java/com/android/server/usage/UsageStatsService.java"
+    if not p.exists():
+        raise HookError(f"missing {p.relative_to(tree)}")
+    s = p.read_text()
+    if "anonUsageDir(" in s:
+        return {}
+    cls = re.search(r"\npublic class UsageStatsService extends SystemService[^{]*\{\n", s)
+    if not cls or "import java.io.File;" not in s:
+        raise HookError("UsageStatsService.java: class declaration or java.io.File import not found")
+    ce, de, dd = len(USAGE_CE.findall(s)), len(USAGE_DE.findall(s)), len(USAGE_DE_DIR.findall(s))
+    if ce < 2 or de < 1 or dd != 1:
+        raise HookError(f"UsageStatsService.java: usagestats paths not as expected (ce={ce}, de={de}, deDir={dd})")
+    s = USAGE_CE.sub('anonUsageDir(userId, "ce")', s)
+    s = USAGE_DE.sub('anonUsageDir(userId, "de")', s)
+    s = USAGE_DE_DIR.sub(lambda m: 'final File deDir = anonUsageDir(userId, "de").getParentFile();\n'
+                         f'{m.group(1)}final File usageStatsDeDir = anonUsageDir(userId, "de");', s)
+    # Fail closed: no per-user usage history may still go to disk.
+    if re.search(r'getDataSystem(Ce|De)Directory\(userId\)[^;]*"usagestats"', s) or \
+            re.search(r'new File\(deDir, "usagestats"\)', s):
+        raise HookError("UsageStatsService.java: a per-user usagestats path is left on disk")
+    cls = re.search(r"\npublic class UsageStatsService extends SystemService[^{]*\{\n", s)
+    return {p: s[: cls.end()] + USAGE_RAM.format(mark=MARK, root=USAGE_ROOT) + s[cls.end():]}
+
+
+HIDE_APP = """{ind}// {mark}: Secure Folder's app is invisible to apps that aren't part of the system, so
+{ind}// none can tell from its components (share target, disguised icon, tile) that a folder exists.
+{ind}if (ANON_HIDDEN_PACKAGE.equals(targetPkgSetting.getPackageName())
+{ind}        && !anonIsSystemCaller(callingSetting)) {{
+{ind}    return true;
+{ind}}}
+"""
+HIDE_APP_HELPER = """
+    // {mark}: see shouldFilterApplication.
+    private static final String ANON_HIDDEN_PACKAGE = "app.anonphene.securefolder";
+
+    /** A system app (or privileged shared user) may see Secure Folder's app; anything else not. */
+    private static boolean anonIsSystemCaller(@Nullable Object callingSetting) {{
+        if (callingSetting instanceof PackageStateInternal) {{
+            return ((PackageStateInternal) callingSetting).isSystem();
+        }}
+        if (callingSetting instanceof SharedUserSetting) {{
+            return ((SharedUserSetting) callingSetting).isPrivileged();
+        }}
+        return false;  // unknown caller: hidden
+    }}
+"""
+
+
+def hook_hide_folder_app(tree):
+    """AppsFilterBase: third-party apps can't see app.anonphene.securefolder at all."""
+    p = tree / "frameworks/base/services/core/java/com/android/server/pm/AppsFilterBase.java"
+    if not p.exists():
+        raise HookError(f"missing {p.relative_to(tree)}")
+    s = p.read_text()
+    if "anonIsSystemCaller(" in s:
+        return {}
+    m = re.search(r"public boolean shouldFilterApplication\(PackageDataSnapshot snapshot, int callingUid,\s*"
+                  r"@Nullable Object callingSetting, PackageStateInternal targetPkgSetting, int userId\) \{", s)
+    if not m:
+        raise HookError("AppsFilterBase.java: shouldFilterApplication(snapshot, callingUid, callingSetting, targetPkgSetting, userId) not found")
+    cache = re.compile(r"^([ \t]*)// use cache\n", re.M)
+    hit = cache.search(s, m.end())
+    nxt = s.find("\n    }\n", m.end())
+    if not hit or hit.start() > nxt:
+        raise HookError("AppsFilterBase.shouldFilterApplication: '// use cache' not found in it")
+    if "import com.android.server.pm.pkg.PackageStateInternal;" not in s or "import android.annotation.Nullable;" not in s:
+        raise HookError("AppsFilterBase.java: PackageStateInternal or Nullable not imported")
+    s = s[: hit.start()] + HIDE_APP.format(mark=MARK, ind=hit.group(1)) + s[hit.start():]
+    cls = re.search(r"\n(public )?abstract class AppsFilterBase[^{]*\{\n", s)
+    if not cls:
+        raise HookError("AppsFilterBase.java: class declaration not found")
+    return {p: s[: cls.end()] + HIDE_APP_HELPER.format(mark=MARK) + s[cls.end():]}
 
 
 HOOKS = [hook_product, hook_settings, hook_hide_people, hook_share_list, hook_share_tabs,
          hook_folder_gate, hook_launcher, hook_phone_number, hook_phone_blank, hook_mobile_data,
-         hook_vpn_folder, hook_vpn_netd]
+         hook_vpn_folder, hook_vpn_netd, hook_usage_ram,
+         hook_hide_folder_app]
 
 
 OURS = ".anonphene-copy"

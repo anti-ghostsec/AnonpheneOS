@@ -121,6 +121,36 @@ FILES = {
         "            mVpns.delete(userId);\n"
         "    }\n"
         "}\n"),
+    "frameworks/base/services/core/java/com/android/server/pm/AppsFilterBase.java": (
+        "import android.annotation.Nullable;\n"
+        "import com.android.server.pm.pkg.PackageStateInternal;\n"
+        "public abstract class AppsFilterBase implements AppsFilterSnapshot {\n"
+        "    public boolean shouldFilterApplication(PackageDataSnapshot snapshot, int callingUid,\n"
+        "            @Nullable Object callingSetting, PackageStateInternal targetPkgSetting, int userId) {\n"
+        "        try {\n"
+        "            if (callingAppId < Process.FIRST_APPLICATION_UID) {\n"
+        "                return false;\n"
+        "            }\n"
+        "            // use cache\n"
+        "            return cached();\n"
+        "        } finally {\n"
+        "        }\n"
+        "    }\n"
+        "}\n"),
+    "frameworks/base/services/usage/java/com/android/server/usage/UsageStatsService.java": (
+        "import java.io.File;\n"
+        "public class UsageStatsService extends SystemService implements\n"
+        "        UserUsageStatsService.StatsUpdatedListener {\n"
+        "    void a(int userId) { deleteRecursively(new File(Environment.getDataSystemDeDirectory(userId), \"usagestats\")); }\n"
+        "    void b(int userId) { final File usageStatsDir = new File(Environment.getDataSystemCeDirectory(userId),\n"
+        "                \"usagestats\"); }\n"
+        "    void c(int userId) { final File usageStatsDir = new File(Environment.getDataSystemCeDirectory(userId),\n"
+        "                \"usagestats\"); }\n"
+        "    void d(int userId) {\n"
+        "        final File deDir = Environment.getDataSystemDeDirectory(userId);\n"
+        "        final File usageStatsDeDir = new File(deDir, \"usagestats\");\n"
+        "    }\n"
+        "}\n"),
     "system/netd/server/FwmarkServer.cpp": (
         "#include <android-base/properties.h>\n"
         "namespace android {\n"
@@ -133,6 +163,10 @@ FILES = {
         "                fwmark.netId = mNetworkController->getDefaultNetwork();\n"
         "            }\n"
         "            fwmark.protectedFromVpn = true;\n"
+        "                fwmark.explicitlySelected = true;\n"
+        "                fwmark.protectedFromVpn =\n"
+        "                        mNetworkController->canProtect(client->getUid(), command.netId);\n"
+        "            break;\n"
         "    return client->getUid();\n"
         "}\n"
         "}  // namespace net\n"
@@ -238,10 +272,30 @@ class Apply(unittest.TestCase):
             self.assertIn("mVpns.delete(userId);\n            com.android.server.connectivity.AnonVpnRoute.unregister(", vms)
             self.assertTrue(next(t.rglob("Vpn.java")).with_name("AnonVpnRoute.java").is_file())
             fw = next(t.rglob("FwmarkServer.cpp")).read_text()
-            self.assertEqual(fw.count("anonCarrierNetId(client->getUid())"), 2)
+            self.assertEqual(fw.count("anonCarrierNetId(client->getUid())"), 3)
+            # An explicit network choice by a carried folder VPN app goes through the owner's VPN.
+            sel = fw.index("anon-select-network")
+            self.assertLess(fw.index("canProtect(client->getUid(), command.netId);"), sel)
+            self.assertLess(sel, fw.index("            break;"))
+            self.assertIn("!mNetworkController->isVirtualNetwork(command.netId)", fw)
             self.assertEqual(fw.count("fwmark.netId = mNetworkController->getDefaultNetwork();"), 2)  # kept as the fallback
             self.assertLess(fw.index("static unsigned anonCarrierNetId"), fw.index("namespace net {"))
             self.assertIn("#include <android-base/strings.h>", fw)
+            af = next(t.rglob("AppsFilterBase.java")).read_text()
+            # Hidden before the cache is consulted, and only from callers that aren't system apps.
+            self.assertLess(af.index("ANON_HIDDEN_PACKAGE.equals(targetPkgSetting"), af.index("// use cache"))
+            self.assertLess(af.index("return false;\n            }\n"), af.index("ANON_HIDDEN_PACKAGE.equals"))
+            self.assertIn('ANON_HIDDEN_PACKAGE = "app.anonphene.securefolder"', af)
+            self.assertIn("return false;  // unknown caller: hidden", af)
+            us = next(t.rglob("UsageStatsService.java")).read_text()
+            # No per-user usage history left on disk; "usagestats" only in the old-history cleanup.
+            cleanup = us[us.index("private static void anonDropDiskHistory"):]
+            cleanup = cleanup[: cleanup.index("\n    }\n") + 7]
+            self.assertNotIn('"usagestats"', us.replace(cleanup, ""))
+            self.assertEqual(cleanup.count('"usagestats"'), 2)
+            self.assertEqual(us.count('anonUsageDir(userId, "ce")'), 2)
+            self.assertIn('usageStatsDeDir = anonUsageDir(userId, "de")', us)
+            self.assertIn('"/data/system/anon-usagestats"', us)
             ir = t / "packages/modules/IntentResolver/java/src"
             self.assertTrue((ir / "com/android/intentresolver/AnonShareFilter.java").is_file())
             self.assertTrue((ir / "app/anonphene/sharelist/ShareList.java").is_file())

@@ -36,6 +36,10 @@ FILES = {
         "frameworks/base/+/{ref}/telephony/common/com/android/internal/telephony/TelephonyPermissions.java",
     "frameworks/base/services/core/java/com/android/server/net/NetworkPolicyManagerService.java":
         "frameworks/base/+/{ref}/services/core/java/com/android/server/net/NetworkPolicyManagerService.java",
+    "frameworks/base/services/core/java/com/android/server/pm/AppsFilterBase.java":
+        "frameworks/base/+/{ref}/services/core/java/com/android/server/pm/AppsFilterBase.java",
+    "frameworks/base/services/usage/java/com/android/server/usage/UsageStatsService.java":
+        "frameworks/base/+/{ref}/services/usage/java/com/android/server/usage/UsageStatsService.java",
     "frameworks/base/services/core/java/com/android/server/connectivity/Vpn.java":
         "frameworks/base/+/{ref}/services/core/java/com/android/server/connectivity/Vpn.java",
     "frameworks/base/services/core/java/com/android/server/VpnManagerService.java":

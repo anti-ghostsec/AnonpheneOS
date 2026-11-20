@@ -1,12 +1,14 @@
 # AnonpheneOS: no logs and no traces left on the phone.
 #
 # The folders where Android keeps crash reports, ANR traces, dropbox entries,
-# bug reports and persisted logs are emptied and then covered by a small RAM
-# filesystem at every boot, so whatever is written there is gone at power off.
+# bug reports and persisted logs, and its usage history (which apps were used and
+# when, which used the camera, microphone or location, per-app battery and data
+# use, statsd's metrics, memory dumps), are emptied and then covered by a small
+# RAM filesystem at every boot, so whatever is written there is gone at power off.
 
 on post-fs-data
     # Empty what an older build or a crash before this point left behind.
-    exec - root root -- /system/bin/rm -rf /data/tombstones /data/anr /data/system/dropbox /data/misc/logd /data/misc/perfetto-traces /data/misc/bootstat /data/user_de/0/com.android.shell/files/bugreports /data/misc/profiling /data/system/procstats /data/system/graphicsstats
+    exec - root root -- /system/bin/rm -rf /data/tombstones /data/anr /data/system/dropbox /data/misc/logd /data/misc/perfetto-traces /data/misc/bootstat /data/user_de/0/com.android.shell/files/bugreports /data/misc/profiling /data/system/procstats /data/system/graphicsstats /data/system/usagestats /data/system_de/usagestats /data/system/anon-usagestats /data/system/appops /data/system/battery-history /data/system/batterystats.bin /data/system/batterystats-checkin.bin /data/system/batterystats-daily.xml /data/system/heapdump /data/system/netstats /data/misc/apexdata/com.android.tethering/netstats /data/misc/stats-data /data/misc/stats-active-metric /data/misc/stats-metadata /data/misc/train-info
     mkdir /data/tombstones 0771 system system
     mkdir /data/anr 0775 system system
     mkdir /data/system/dropbox 0700 system system
@@ -22,6 +24,53 @@ on post-fs-data
     restorecon_recursive /data/system/dropbox
     restorecon_recursive /data/misc/logd
     restorecon_recursive /data/misc/perfetto-traces
+
+    # Usage history, in RAM.
+    #   anon-usagestats  which app was used and when (UsageStatsService, hooked by apply.py)
+    #   appops           which app used the camera, microphone, location... and when
+    #   battery-history  per-app battery use over time (batterystats*.bin are emptied above)
+    #   netstats         per-app data use (Settings' data usage starts again at every boot)
+    #   procstats, graphicsstats, heapdump, bootstat, statsd's metrics
+    mkdir /data/system/anon-usagestats 0700 system system
+    mkdir /data/system/appops 0700 system system
+    mkdir /data/system/battery-history 0700 system system
+    mkdir /data/system/netstats 0700 system system
+    mkdir /data/misc/apexdata/com.android.tethering/netstats 0700 system system
+    mkdir /data/system/procstats 0700 system system
+    mkdir /data/system/graphicsstats 0700 system system
+    mkdir /data/system/heapdump 0700 system system
+    mkdir /data/misc/bootstat 0700 system log
+    mkdir /data/misc/stats-data 0770 statsd system
+    mkdir /data/misc/stats-active-metric 0770 statsd system
+    mkdir /data/misc/stats-metadata 0770 statsd system
+    mkdir /data/misc/train-info 0770 statsd system
+    mount tmpfs tmpfs /data/system/anon-usagestats nosuid nodev noexec size=16m,mode=0700,uid=1000,gid=1000
+    mount tmpfs tmpfs /data/system/appops nosuid nodev noexec size=8m,mode=0700,uid=1000,gid=1000
+    mount tmpfs tmpfs /data/system/battery-history nosuid nodev noexec size=8m,mode=0700,uid=1000,gid=1000
+    mount tmpfs tmpfs /data/system/netstats nosuid nodev noexec size=4m,mode=0700,uid=1000,gid=1000
+    mount tmpfs tmpfs /data/misc/apexdata/com.android.tethering/netstats nosuid nodev noexec size=4m,mode=0700,uid=1000,gid=1000
+    mount tmpfs tmpfs /data/system/procstats nosuid nodev noexec size=4m,mode=0700,uid=1000,gid=1000
+    mount tmpfs tmpfs /data/system/graphicsstats nosuid nodev noexec size=1m,mode=0700,uid=1000,gid=1000
+    mount tmpfs tmpfs /data/system/heapdump nosuid nodev noexec size=1m,mode=0700,uid=1000,gid=1000
+    mount tmpfs tmpfs /data/misc/bootstat nosuid nodev noexec size=64k,mode=0700,uid=1000,gid=1007
+    mount tmpfs tmpfs /data/misc/stats-data nosuid nodev noexec size=8m,mode=0770,uid=1066,gid=1000
+    mkdir /data/misc/stats-data/restricted-data 0770 statsd system
+    mount tmpfs tmpfs /data/misc/stats-active-metric nosuid nodev noexec size=1m,mode=0770,uid=1066,gid=1000
+    mount tmpfs tmpfs /data/misc/stats-metadata nosuid nodev noexec size=1m,mode=0770,uid=1066,gid=1000
+    mount tmpfs tmpfs /data/misc/train-info nosuid nodev noexec size=1m,mode=0770,uid=1066,gid=1000
+    restorecon_recursive /data/system/anon-usagestats
+    restorecon_recursive /data/system/appops
+    restorecon_recursive /data/system/battery-history
+    restorecon_recursive /data/system/netstats
+    restorecon_recursive /data/misc/apexdata/com.android.tethering/netstats
+    restorecon_recursive /data/system/procstats
+    restorecon_recursive /data/system/graphicsstats
+    restorecon_recursive /data/system/heapdump
+    restorecon_recursive /data/misc/bootstat
+    restorecon_recursive /data/misc/stats-data
+    restorecon_recursive /data/misc/stats-active-metric
+    restorecon_recursive /data/misc/stats-metadata
+    restorecon_recursive /data/misc/train-info
 
 on property:sys.boot_completed=1
     # Logs held in memory since boot (before the properties above took hold).

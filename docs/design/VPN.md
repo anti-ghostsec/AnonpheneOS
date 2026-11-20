@@ -83,6 +83,9 @@ too, so if the main VPN drops, folder apps are cut off rather than going out bar
   whose own user is a Secure Folder whose parent has a VPN running, so no VPN anywhere else changes.
 - netd already records which app may protect sockets for which VPN (`allowProtect`,
   `canProtect`); the hook adds one more lookup next to it, not a new mechanism.
+- The same goes for a network the folder's VPN app picks itself (`Network.bindSocket`,
+  `bindProcessToNetwork`): VPN apps may bypass VPNs on every network, so an explicit choice of
+  Wi-Fi or mobile data is sent through the main VPN too, instead of out bare.
 
 **Fails closed:** if the main side has a VPN set up but it isn't up (it dropped, crashed or is
 reconnecting, always-on or not), the folder VPN's tunnel has nowhere to go and the folder stays
