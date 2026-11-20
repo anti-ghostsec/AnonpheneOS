@@ -8,6 +8,7 @@ package com.android.server.connectivity;
 
 import android.content.Context;
 import android.database.ContentObserver;
+import android.net.ConnectivityManager;
 import android.net.INetd;
 import android.os.Binder;
 import android.os.Handler;
@@ -15,13 +16,16 @@ import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.provider.Settings;
+import android.util.Range;
 import android.util.SparseArray;
 
 import com.android.internal.os.BackgroundThread;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The Secure Folder and the main side's VPN.
@@ -33,8 +37,11 @@ import java.util.List;
  *   <li>A VPN started inside the folder is carried by the owner's VPN: the folder's VPN app is the
  *       only folder app the owner's VPN still covers, and netd sends that app's protected tunnel
  *       sockets through the owner's VPN instead of the bare network (property {@link #PROP}).
- *       If the owner's VPN is always-on but down, the tunnel goes nowhere: fails closed.</li>
+ *       If the owner's VPN is set up but down, the tunnel goes nowhere, and the folder VPN app's
+ *       other traffic (its DNS lookups too) is blocked as under lockdown: fails closed.</li>
  * </ul>
+ *
+ * Only the folder's own parent user's VPN carries it, never a work profile's.
  *
  * Both depend on the owner's per-user secure setting {@link #SETTING}, on (1) unless set to 0.
  */
@@ -48,6 +55,8 @@ public final class AnonVpnRoute {
     private static volatile SparseArray<String> sActive = new SparseArray<>();
     private static volatile Context sContext;
     private static final Runnable sRefresh = AnonVpnRoute::refresh;
+    /** Folder VPN app uids blocked from the bare network by us. Only touched in refresh(). */
+    private static final Set<Integer> sBlocked = new HashSet<>();
 
     private AnonVpnRoute() {}
 
@@ -93,8 +102,12 @@ public final class AnonVpnRoute {
         final long token = Binder.clearCallingIdentity();
         try {
             UserManager um = ctx.getSystemService(UserManager.class);
+            // getProfileIds lists the whole profile group, so a work profile would see its
+            // sibling folder too: only the folder's own parent carries it.
             for (int id : um.getProfileIds(userId, false)) {
-                if (id != userId && isFolder(um, id)) out.add(id);
+                if (id == userId || !isFolder(um, id)) continue;
+                UserHandle parent = um.getProfileParent(UserHandle.of(id));
+                if (parent != null && parent.getIdentifier() == userId) out.add(id);
             }
         } finally {
             Binder.restoreCallingIdentity(token);
@@ -145,7 +158,7 @@ public final class AnonVpnRoute {
             int user = v.anonUserId();
             String[] pkgs = v.anonPackages();
             if (!isFolder(um, user)) {
-                if (pkgs[0] != null) mainSetUp.put(user, pkgs[0]);
+                if (pkgs[2] != null) mainSetUp.put(user, pkgs[2]);
                 continue;
             }
             if (pkgs[0] != null) prepared.put(user, pkgs[0]);
@@ -156,6 +169,7 @@ public final class AnonVpnRoute {
         for (Vpn v : all) v.anonRefreshRanges();
         // 3. A folder VPN that's set up (connected or not) has its tunnel carried by the owner's VPN.
         StringBuilder carried = new StringBuilder();
+        Set<Integer> block = new HashSet<>();
         for (Vpn v : all) {
             int user = v.anonUserId();
             if (prepared.get(user) == null || !chainsOut(ctx, user)) continue;
@@ -163,11 +177,14 @@ public final class AnonVpnRoute {
             Vpn owner = parent == null ? null : vpnOf(parent.getIdentifier());
             int net = owner == null ? 0 : owner.anonNetId();
             if (net == 0 && owner != null && (owner.getAlwaysOnPackage() != null
-                    || mainSetUp.get(owner.anonUserId()) != null)) {
+                    || owner.anonLockdown() || mainSetUp.get(owner.anonUserId()) != null)) {
                 // The main side has a VPN set up (always-on or not) but it isn't up: it dropped,
                 // crashed or is reconnecting. The folder's tunnel goes nowhere rather than out on
                 // the bare network (docs/design/VPN.md: fails closed while the switch is on).
                 net = INetd.UNREACHABLE_NET_ID;
+                // Its other sockets (DNS lookups included) would use the bare default network,
+                // since no VPN covers it now: blocked, as lockdown does.
+                block.add(v.anonOwnerUid());
             }
             // Only when the main side has no VPN at all (none ever set up, or turned off in
             // Settings, which clears it) does the folder's VPN go out directly, as on stock Android.
@@ -176,6 +193,33 @@ public final class AnonVpnRoute {
             carried.append(v.anonOwnerUid()).append(':').append(net);
         }
         SystemProperties.set(PROP, carried.toString());
+        setBlocked(ctx, block);
+    }
+
+    /**
+     * Requires a VPN for exactly {@code want} among the uids we block. ConnectivityService, netd
+     * and PermissionMonitor count overlapping requests, so lockdown's own are left alone.
+     */
+    private static void setBlocked(Context ctx, Set<Integer> want) {
+        Set<Integer> add = new HashSet<>(want), drop = new HashSet<>(sBlocked);
+        add.removeAll(sBlocked);
+        drop.removeAll(want);
+        ConnectivityManager cm = ctx.getSystemService(ConnectivityManager.class);
+        try {
+            if (!add.isEmpty()) cm.setRequireVpnForUids(true, ranges(add));
+            sBlocked.addAll(add);
+            if (!drop.isEmpty()) cm.setRequireVpnForUids(false, ranges(drop));
+            sBlocked.removeAll(drop);
+        } catch (RuntimeException e) {
+            // Not logged (no logs from AnonpheneOS); what didn't apply is retried on the next
+            // change, since sBlocked only records what did.
+        }
+    }
+
+    private static List<Range<Integer>> ranges(Set<Integer> uids) {
+        List<Range<Integer>> out = new ArrayList<>(uids.size());
+        for (int u : uids) out.add(new Range<>(u, u));
+        return out;
     }
 
     private static Vpn vpnOf(int userId) {

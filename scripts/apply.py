@@ -49,32 +49,37 @@ def hook_product(tree):
 
 
 SETTINGS_KEYS = '''
-        // {mark}: AnonpheneOS share list (see vendor/anonphene/lib/sharelist).
+        // {mark}: AnonpheneOS settings. Declared @hide and not @Readable, so only the system and
+        // platform-signed apps can read them: other apps can't learn which apps you blank, allow
+        // or share to, or anything about the Secure Folder.
         /** @hide */
-        @Readable
         public static final String ANON_SHARE_TARGETS = "anon_share_targets";
         /** @hide */
-        @Readable
         public static final String ANON_SHARE_HIDE_PEOPLE = "anon_share_hide_people";
         /** @hide Apps given a blank phone number, package names separated by commas. */
-        @Readable
         public static final String ANON_PHONE_NUMBER_BLANK = "anon_phone_number_blank";
         /** @hide Apps allowed to use mobile data, package names separated by commas. */
-        @Readable
         public static final String ANON_MOBILE_DATA_ALLOWED = "anon_mobile_data_allowed";
         /** @hide 1 (default): the Secure Folder goes through, and its VPN inside, this user's VPN. */
-        @Readable
         public static final String ANON_FOLDER_VIA_MAIN_VPN = "anon_folder_via_main_vpn";
+        /** @hide Secure Folder's key settings, kept in the folder profile's own settings. */
+        public static final String ANON_FOLDER_KEY_PARAMS = "anon_folder_key_params";
+        /** @hide */
+        public static final String ANON_FOLDER_KEY_PENDING = "anon_folder_key_pending";
+        /** @hide */
+        public static final String ANON_FOLDER_WRONG_TRIES = "anon_folder_wrong_tries";
+        /** @hide */
+        public static final String ANON_FOLDER_WIPE_AFTER = "anon_folder_wipe_after";
 '''
 
 
 def hook_settings(tree):
-    """The share-list keys become known, readable Secure settings."""
+    """AnonpheneOS's keys become known Secure settings that only the system can read."""
     p = tree / "frameworks/base/core/java/android/provider/Settings.java"
     if not p.exists():
         raise HookError(f"missing {p.relative_to(tree)}")
     s = p.read_text()
-    if f"{MARK}: AnonpheneOS share list" in s:
+    if f"{MARK}: AnonpheneOS settings." in s:
         return {}
     m = re.search(r"public static final class Secure extends NameValueTable\s*\{\n", s)
     if not m:
@@ -391,11 +396,22 @@ def hook_mobile_data(tree):
 
 VPN_HELPERS = '''
     // {mark}: helpers for AnonVpnRoute (the Secure Folder and the main VPN, docs/design/VPN.md).
-    /** {{set-up VPN app or null, connected VPN app or null}}, read under this Vpn's lock. */
+    /**
+     * {{set-up VPN app or null, connected VPN app or null, any VPN set up or null}}, read under
+     * this Vpn's lock. The last also counts a VPN made in Settings (no app of its own) while it's
+     * on, including while it reconnects.
+     */
     synchronized String[] anonPackages() {{
         final String prepared = mPackage == null || VpnConfig.LEGACY_VPN.equals(mPackage)
                 ? null : mPackage;
-        return new String[] {{prepared, mNetworkAgent != null && mConfig != null ? prepared : null}};
+        final String any = prepared != null ? prepared
+                : isSettingsVpnLocked() ? VpnConfig.LEGACY_VPN : null;
+        return new String[] {{prepared, mNetworkAgent != null && mConfig != null ? prepared : null, any}};
+    }}
+
+    /** Lockdown is on, for an app VPN or a VPN made in Settings. */
+    synchronized boolean anonLockdown() {{
+        return mLockdown;
     }}
 
     int anonOwnerUid() {{
@@ -461,7 +477,7 @@ def hook_vpn_folder(tree):
     s = vpn.read_text()
     if f"{MARK}: helpers for AnonVpnRoute" not in s:
         for needed in ("NetworkAgent mNetworkAgent", "String mPackage", "int mOwnerUID", "int mUserId",
-                       "VpnConfig.LEGACY_VPN",
+                       "VpnConfig.LEGACY_VPN", "boolean isSettingsVpnLocked()",
                        "VpnConfig mConfig", "NetworkCapabilities mNetworkCapabilities", "boolean mLockdown",
                        "void setVpnForcedLocked(boolean", "doSendNetworkCapabilities(", "mContext"):
             if needed not in s:
@@ -686,9 +702,38 @@ def hook_hide_folder_app(tree):
     return {p: s[: cls.end()] + HIDE_APP_HELPER.format(mark=MARK) + s[cls.end():]}
 
 
+OWNER_UID_ANCHOR = re.compile(
+    r"\n([ \t]*)if \(vpn == null \|\| !isVpnServiceVpn\(vpn\)\s*\n\s*\|\| vpn\.networkCapabilities\.getOwnerUid\(\) "
+    r"!= mDeps\.getCallingUid\(\)\) \{\n\s*return INVALID_UID;\n\s*\}\n")
+
+OWNER_UID = '''{ind}// {mark}: a VPN app learns which app owns a connection only within its own user. The
+{ind}// main side's VPN carries the Secure Folder too; folder apps' uids would show it's there.
+{ind}if (!UserHandle.getUserHandleForUid(uid).equals(
+{ind}        UserHandle.getUserHandleForUid(mDeps.getCallingUid()))) {{
+{ind}    return INVALID_UID;
+{ind}}}
+'''
+
+
+def hook_vpn_owner_uid(tree):
+    """ConnectivityService.getConnectionOwnerUid: no uids from another user for a VPN app."""
+    p = tree / "packages/modules/Connectivity/service/src/com/android/server/ConnectivityService.java"
+    if not p.exists():
+        raise HookError(f"missing {p.relative_to(tree)}")
+    s = p.read_text()
+    if f"{MARK}: a VPN app learns which app owns a connection" in s:
+        return {}
+    if "import android.os.UserHandle;" not in s:
+        raise HookError("ConnectivityService.java: android.os.UserHandle not imported")
+    m = OWNER_UID_ANCHOR.search(s)
+    if not m or OWNER_UID_ANCHOR.search(s, m.end()):
+        raise HookError("ConnectivityService.getConnectionOwnerUid: VPN owner check not found once")
+    return {p: s[: m.end()] + OWNER_UID.format(ind=m.group(1), mark=MARK) + s[m.end():]}
+
+
 HOOKS = [hook_product, hook_settings, hook_hide_people, hook_share_list, hook_share_tabs,
          hook_folder_gate, hook_launcher, hook_phone_number, hook_phone_blank, hook_mobile_data,
-         hook_vpn_folder, hook_vpn_netd, hook_usage_ram,
+         hook_vpn_folder, hook_vpn_owner_uid, hook_vpn_netd, hook_usage_ram,
          hook_hide_folder_app]
 
 

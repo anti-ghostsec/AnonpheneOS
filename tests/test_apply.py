@@ -90,6 +90,7 @@ FILES = {
     "frameworks/base/services/core/java/com/android/server/connectivity/Vpn.java": (
         "import com.android.internal.net.VpnConfig;\n"
         "public class Vpn {\n"
+        "    private boolean isSettingsVpnLocked() { return mVpnRunner != null; }\n"
         "    protected final Context mContext;\n"
         "    @GuardedBy(\"this\") protected String mPackage;\n"
         "    private int mOwnerUID;\n"
@@ -149,6 +150,21 @@ FILES = {
         "    void d(int userId) {\n"
         "        final File deDir = Environment.getDataSystemDeDirectory(userId);\n"
         "        final File usageStatsDeDir = new File(deDir, \"usagestats\");\n"
+        "    }\n"
+        "}\n"),
+    "packages/modules/Connectivity/service/src/com/android/server/ConnectivityService.java": (
+        "import android.os.UserHandle;\n"
+        "public class ConnectivityService {\n"
+        "    public int getConnectionOwnerUid(ConnectionInfo connectionInfo) {\n"
+        "        final int uid = lookup();\n"
+        "        if (hasNetworkStackPermission()) return uid;\n"
+        "        final NetworkAgentInfo vpn = getVpnForUid(uid);\n"
+        "        if (vpn == null || !isVpnServiceVpn(vpn)\n"
+        "                || vpn.networkCapabilities.getOwnerUid() != mDeps.getCallingUid()) {\n"
+        "            return INVALID_UID;\n"
+        "        }\n"
+        "\n"
+        "        return uid;\n"
         "    }\n"
         "}\n"),
     "system/netd/server/FwmarkServer.cpp": (
@@ -271,6 +287,11 @@ class Apply(unittest.TestCase):
             self.assertIn("mVpns.put(userId, userVpn);\n            com.android.server.connectivity.AnonVpnRoute.register(", vms)
             self.assertIn("mVpns.delete(userId);\n            com.android.server.connectivity.AnonVpnRoute.unregister(", vms)
             self.assertTrue(next(t.rglob("Vpn.java")).with_name("AnonVpnRoute.java").is_file())
+            self.assertIn("isSettingsVpnLocked() ? VpnConfig.LEGACY_VPN", vpn)
+            cs = next(t.rglob("ConnectivityService.java")).read_text()
+            # Checked after the VPN-owner check, before the uid is returned.
+            self.assertLess(cs.index("getOwnerUid() != mDeps.getCallingUid()"), cs.index("getUserHandleForUid(uid)"))
+            self.assertLess(cs.index("getUserHandleForUid(uid)"), cs.index("        return uid;\n    }"))
             fw = next(t.rglob("FwmarkServer.cpp")).read_text()
             self.assertEqual(fw.count("anonCarrierNetId(client->getUid())"), 3)
             # An explicit network choice by a carried folder VPN app goes through the owner's VPN.
