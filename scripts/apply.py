@@ -323,11 +323,23 @@ def hook_phone_number(tree):
 PHONE_BLANK = '''
         // {mark}: apps you chose to give a blank phone number get empty data, as if the
         // permission's app op were off (Settings > AnonpheneOS privacy > Phone number).
+        // An app in the Secure Folder follows the list of the user that owns it too: the folder
+        // has no Settings of its own to choose there.
         final long anonToken = Binder.clearCallingIdentity();
         try {{
-            final String anonBlank = android.provider.Settings.Secure.getStringForUser(
-                    context.getContentResolver(), "anon_phone_number_blank",
-                    android.os.UserHandle.getUserId({uid}));
+            final android.os.UserHandle anonUser = android.os.UserHandle.getUserHandleForUid({uid});
+            String anonBlank = android.provider.Settings.Secure.getStringForUser(
+                    context.getContentResolver(), "anon_phone_number_blank", anonUser.getIdentifier());
+            try {{
+                final android.os.UserHandle anonParent = context.getSystemService(
+                        android.os.UserManager.class).getProfileParent(anonUser);
+                final String anonMore = anonParent == null ? null
+                        : android.provider.Settings.Secure.getStringForUser(context.getContentResolver(),
+                                "anon_phone_number_blank", anonParent.getIdentifier());
+                if (anonMore != null) anonBlank = anonBlank == null ? anonMore : anonBlank + "," + anonMore;
+            }} catch (SecurityException anonNoAccess) {{
+                // this process can't see other users: the app's own user's list still applies
+            }}
             final String[] anonPkgs = anonBlank == null ? null
                     : context.getPackageManager().getPackagesForUid({uid});
             if (anonPkgs != null) {{

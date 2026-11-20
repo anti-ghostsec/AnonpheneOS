@@ -76,6 +76,9 @@ final class AnonMobileData {
     static boolean blocks(int uid) {
         Context ctx = sContext;
         if (ctx == null || UserHandle.getAppId(uid) < Process.FIRST_APPLICATION_UID) return false;
+        // An app's SDK sandbox runs as the system's sandbox package: it follows the app instead,
+        // or an app without mobile data could use it through its sandboxed SDKs.
+        if (Process.isSdkSandboxUid(uid)) uid = Process.getAppUidForSdkSandboxUid(uid);
         synchronized (sBlocked) {
             int i = sBlocked.indexOfKey(uid);
             if (i >= 0) return sBlocked.valueAt(i);

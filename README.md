@@ -189,12 +189,25 @@ resources, the no-logs settings, and a scan for private details.
   carrier's own services work. Android decides "mobile data" by whether a network is metered:
   a mobile plan your carrier marks unmetered isn't covered, and a metered Wi-Fi (a hotspot) is
   closed to those apps too. A VPN running over mobile data counts as mobile data as well.
+  And an app can have a built-in app fetch for it: a link it opens in the browser (Custom Tabs)
+  or a download it hands to Android's download manager uses mobile data. Some carriers add your
+  number to web requests made over mobile data ("header enrichment"), so a site opened that way
+  can learn it. Apps in the Secure Folder never get mobile data (the folder has no Settings to
+  allow them).
 - **The VPN routing for the Secure Folder hasn't run yet.** It changes Android's VPN service and
-  netd, so it only works in a built image. One part (sending a folder VPN through an always-on main
-  VPN that's down to the "unreachable" network) depends on how netd treats that network and needs
-  checking on a device. One VPN per side remains Android's limit until step 3 of the design is built.
+  netd, so it only works in a built image. One part (sending a folder VPN through a main VPN
+  that's set up but down to the "unreachable" network, and blocking the folder VPN app's other
+  traffic meanwhile) depends on how netd treats that network and needs checking on a device. One VPN per side remains Android's limit until step 3 of the design is built.
 - **The default phone and SMS apps and the SIM's carrier app can always read the number**
   unless you give them a blank one, which may break MMS or the carrier's features.
+- **A blank number covers Android's phone-number calls only.** Your number can also be found in
+  the call log (call-log permission), in MMS messages (SMS permission), or by an app that can
+  place calls dialing the carrier's "my number" code. Don't give those permissions to apps you
+  wouldn't give the number to. Apps in the Secure Folder follow the main side's choices.
+- **The keyboard, clipboard and accessibility services are shared with the Secure Folder.**
+  Android runs the main side's keyboard and accessibility services for the folder too, and the
+  clipboard is shared between sides. Use a keyboard without internet access, turn
+  off accessibility services you don't fully trust, and don't copy what must stay in the folder.
 - **The GSI is weaker than the Pixel build.** Its bootloader stays unlocked, so someone with the
   phone could flash a modified system unnoticed, and the folder is only as strong as the
   phone's own secure hardware plus your passphrase and keyfiles. It's also less tested.

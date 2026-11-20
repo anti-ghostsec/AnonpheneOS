@@ -20,7 +20,10 @@ through the chip.
 Android's own lock prompt is never used for the folder, so it can't be used to guess at it,
 and Secure Folder never sets up a fingerprint or face for it. You can have the folder delete itself after
 3, 5, 10 or 20 wrong tries in a row (⋮ → Delete after wrong tries). A wrong passphrase and a
-missing keyfile give the same message, so nothing says which part was wrong.
+missing keyfile give the same message, so nothing says which part was wrong. The count, the
+limit and the folder's Argon2id salt are kept in the folder profile's own system settings, not in
+Secure Folder's app data, so clearing the app's storage can't reset the count or turn the limit
+off, and each try is counted before it's checked.
 
 If you forget the passphrase or lose a keyfile, the folder can't be opened by anyone,
 including you. There's no recovery, by design.
