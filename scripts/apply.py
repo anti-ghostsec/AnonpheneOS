@@ -6,12 +6,18 @@
 It copies vendor/anonphene and the two apps into the tree, then hooks them in.
 Every change is found by looking for the code it attaches to, not by line numbers, and is
 marked with ANONPHENE-HOOK so running this again changes nothing. If upstream code moved and an
-anchor can't be found, it stops and says which one, before touching any file. Nothing is
+anchor can't be found, it stops and says which one, before hooking anything. Nothing is
 downloaded and nothing outside the given tree is written.
+
+Files hooked by an earlier run (listed in .anonphene-hooked in the tree) are first put back to
+the synced version, so a newer AnonpheneOS replaces its old hooks instead of keeping them. A
+file it no longer hooks goes back to upstream; one it added and no longer needs is removed.
 """
 
+import os
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -758,8 +764,82 @@ def copy_ours(tree):
         (dst / OURS).write_text("Copied by AnonpheneOS scripts/apply.py; edit the repo's copy.\n")
 
 
+RECORD = ".anonphene-hooked"
+
+
+def _tracked(path):
+    return subprocess.run(["git", "ls-files", "--error-unmatch", path.name], cwd=path.parent,
+                          capture_output=True).returncode == 0
+
+
+def _older_hooked(tree):
+    """(path, added) for files an earlier run hooked: from its record ("A" for a file it added,
+    "M" for one it changed), or for a tree hooked before the record existed, every modified file
+    in a synced project that carries our marker."""
+    rec = tree / RECORD
+    if rec.is_file():
+        out = []
+        for line in rec.read_text().splitlines():
+            kind, _, rel = line.partition(" ")
+            if kind in ("A", "M") and rel:
+                out.append((tree / rel, kind == "A"))
+        return out
+    plist = tree / ".repo/project.list"
+    if not plist.is_file():
+        return []
+    out = []
+    for proj in plist.read_text().split():
+        d = tree / proj
+        r = subprocess.run(["git", "grep", "-l", MARK], cwd=d, capture_output=True, text=True)
+        if r.returncode != 0:
+            continue
+        mod = subprocess.run(["git", "diff", "--name-only", "HEAD"], cwd=d, capture_output=True, text=True)
+        changed = set(mod.stdout.split())
+        out += [(d / f, False) for f in r.stdout.split() if f in changed]
+    return out
+
+
+def restore_hooked(tree):
+    """Puts files hooked by an earlier run back as synced (tracked ones from git, files we added
+    removed). Returns what they were, so put_back() can undo it."""
+    saved = {}
+    for path, added in _older_hooked(tree):
+        try:
+            path.relative_to(tree)
+        except ValueError:
+            continue  # never outside the tree
+        if not path.is_file() or path in saved:
+            continue
+        tracked = not added and _tracked(path)
+        if not added and not tracked:
+            continue  # not ours and not in git: left as is (its marker keeps it from changing)
+        st = path.stat()
+        saved[path] = (path.read_bytes(), st.st_atime_ns, st.st_mtime_ns)
+        if tracked:
+            r = subprocess.run(["git", "checkout", "HEAD", "--", path.name], cwd=path.parent,
+                               capture_output=True, text=True)
+            if r.returncode != 0:
+                put_back(saved)
+                raise HookError(f"couldn't put back {path.relative_to(tree)}: {r.stderr.strip()}")
+        else:
+            path.unlink()
+    return saved
+
+
+def put_back(saved, only=None):
+    """Restores files as restore_hooked() found them, timestamps too (so the build doesn't
+    recompile what didn't change)."""
+    for path, (data, atime, mtime) in saved.items():
+        if only is not None and path not in only:
+            continue
+        path.write_bytes(data)
+        os.utime(path, ns=(atime, mtime))
+
+
 def apply(tree):
     tree = Path(tree).resolve()
+    older = dict(_older_hooked(tree))
+    saved = restore_hooked(tree)
     changes = {}
     errors = []
     for hook in HOOKS:
@@ -772,7 +852,20 @@ def apply(tree):
         if (dst.exists() or dst.is_symlink()) and not (dst / OURS).is_file():
             errors.append(f"copy_ours: {dst.relative_to(tree)} exists and isn't ours; move it away first")
     if errors:
+        put_back(saved)
         raise HookError("nothing was changed:\n  " + "\n  ".join(errors))
+    # Hooks that come out the same as last time keep their file exactly as it was.
+    same = {p for p, t in changes.items() if p in saved and saved[p][0] == t.encode()}
+    put_back(saved, only=same)
+    # The record: what this run hooked, plus what an earlier run hooked that couldn't be put
+    # back (not in git) and so stays hooked.
+    record = {p: a for p, a in older.items() if p not in saved and p.exists()}
+    for p in changes:
+        record[p] = older[p] if p in older else not p.exists()
+    if record:
+        (tree / RECORD).write_text("".join(
+            f"{'A' if a else 'M'} {p.relative_to(tree)}\n" for p, a in sorted(record.items())))
+    changes = {p: t for p, t in changes.items() if p not in same}
     for path, text in changes.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".anon-tmp")
@@ -781,7 +874,8 @@ def apply(tree):
             shutil.copymode(path, tmp)
         tmp.replace(path)
     copy_ours(tree)
-    return sorted(str(p.relative_to(tree)) for p in changes)
+    restored = [p for p in saved if p not in same and p not in changes]
+    return sorted(str(p.relative_to(tree)) for p in list(changes) + restored)
 
 
 def main(argv):

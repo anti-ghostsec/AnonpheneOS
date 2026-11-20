@@ -36,13 +36,17 @@ fi
 
 mkdir -p "$src"
 cd "$src"
-if [[ ! -d .repo ]]; then
-    repo init -u https://github.com/GrapheneOS/platform_manifest.git -b "refs/tags/$tag"
-fi
+# Run every time, not only the first: on an existing tree this switches it to the tag asked for
+# (otherwise a new tag would be verified while the old one is what gets synced and built).
+repo init -u https://github.com/GrapheneOS/platform_manifest.git -b "refs/tags/$tag"
+# The manifest must be exactly the tag, signed by GrapheneOS, before any code is synced.
+(
+    cd .repo/manifests
+    git verify-tag "$tag"
+    [[ $(git rev-parse HEAD) == $(git rev-parse "refs/tags/$tag^{commit}") ]] \
+        || { echo "build.sh: the manifest isn't at $tag" >&2; exit 1; }
+)
 repo sync -j"$(nproc)" --force-sync --no-clone-bundle --no-tags
-
-# Verify the tag is signed by GrapheneOS before building from it.
-(cd .repo/manifests && git verify-tag "$tag")
 
 python3 "$here/scripts/apply.py" "$src"
 

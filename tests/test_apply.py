@@ -1,6 +1,9 @@
 """scripts/apply.py on a small fake source tree."""
 
 import importlib.util
+import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -233,7 +236,8 @@ def make_tree(d, skip=()):
 
 
 def snapshot(d):
-    return {str(p.relative_to(d)): p.read_text() for p in Path(d).rglob("*") if p.is_file()}
+    return {str(p.relative_to(d)): p.read_text() for p in Path(d).rglob("*")
+            if p.is_file() and ".git" not in p.relative_to(d).parts}
 
 
 class Apply(unittest.TestCase):
@@ -353,6 +357,62 @@ class Apply(unittest.TestCase):
                 apply.apply(d)
             self.assertEqual(mine.read_text(), "someone else's")
             self.assertNotIn("ANONPHENE-HOOK", (Path(d) / "build/make/target/product/handheld_product.mk").read_text())
+
+    def _git_tree(self, d):
+        make_tree(d)
+        git = ["git", "-c", "user.name=test", "-c", "user.email=", "-C", d]
+        subprocess.run(git + ["init", "-q"], check=True)
+        subprocess.run(git + ["add", "-A"], check=True)
+        subprocess.run(git + ["commit", "-qm", "synced"], check=True)
+
+    @unittest.skipUnless(shutil.which("git"), "needs git")
+    def test_newer_hooks_replace_older_ones(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._git_tree(d)
+            apply.apply(d)
+            t = Path(d)
+            st = next(t.rglob("Settings.java"))
+            route = next(t.rglob("AnonVpnRoute.java"))
+            npm = next(t.rglob("NetworkPolicyManagerService.java"))
+            # As an older AnonpheneOS left them: an older hook, and a file it added.
+            st.write_text(st.read_text().replace("ANON_FOLDER_WIPE_AFTER", "ANON_OLD_KEY"))
+            route.write_text("old copy\n")
+            stale = route.with_name("AnonOldHelper.java")
+            stale.write_text("no longer used\n")
+            rec = t / apply.RECORD
+            rec.write_text(rec.read_text() + f"A {stale.relative_to(t)}\n")
+            os.utime(npm, ns=(1, 1))
+            changed = apply.apply(d)
+            self.assertIn("ANON_FOLDER_WIPE_AFTER", st.read_text())
+            self.assertNotIn("ANON_OLD_KEY", st.read_text())
+            self.assertEqual(st.read_text().count("ANONPHENE-HOOK: AnonpheneOS settings."), 1)
+            self.assertNotEqual(route.read_text(), "old copy\n")
+            self.assertFalse(stale.exists())
+            self.assertEqual(sorted(changed), sorted([str(st.relative_to(t)), str(route.relative_to(t)),
+                                                      str(stale.relative_to(t))]))
+            # An unchanged hook keeps its file as it was, timestamp too.
+            self.assertEqual(npm.stat().st_mtime_ns, 1)
+            self.assertNotIn("AnonOldHelper", rec.read_text())
+
+    @unittest.skipUnless(shutil.which("git"), "needs git")
+    def test_failed_anchor_leaves_older_hooks(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._git_tree(d)
+            apply.apply(d)
+            t = Path(d)
+            st = next(t.rglob("Settings.java"))
+            st.write_text(st.read_text().replace("ANON_FOLDER_WIPE_AFTER", "ANON_OLD_KEY"))
+            # A newer sync where upstream code moved: an anchor no longer matches.
+            fw = next(t.rglob("FwmarkServer.cpp"))
+            hooked = fw.read_text()
+            fw.write_text("moved upstream\n")
+            subprocess.run(["git", "-c", "user.name=test", "-c", "user.email=", "-C", d, "commit",
+                            "-qm", "newer sync", "--", str(fw.relative_to(t))], check=True)
+            fw.write_text(hooked)
+            before = snapshot(d)
+            with self.assertRaises(apply.HookError):
+                apply.apply(d)
+            self.assertEqual(snapshot(d), before)
 
 
 if __name__ == "__main__":
