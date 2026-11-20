@@ -84,8 +84,12 @@ too, so if the main VPN drops, folder apps are cut off rather than going out bar
 - netd already records which app may protect sockets for which VPN (`allowProtect`,
   `canProtect`); the hook adds one more lookup next to it, not a new mechanism.
 
-**Fails closed:** if the main VPN isn't up, the folder VPN's tunnel has nowhere to go and the
-folder stays offline. It never falls back to the bare network while the switch is on.
+**Fails closed:** if the main side has a VPN set up but it isn't up (it dropped, crashed or is
+reconnecting, always-on or not), the folder VPN's tunnel has nowhere to go and the folder stays
+offline. It never falls back to the bare network while the switch is on. Only when the main side
+has no VPN at all (none set up, or turned off in Settings, which clears it) does the folder's VPN
+connect directly, as on stock Android. A VPN app switched off from inside the app itself stays
+set up, so the folder stays offline until it's back on or the switch is turned off.
 
 **Size:** medium. A C++ change in netd plus the Java above.
 

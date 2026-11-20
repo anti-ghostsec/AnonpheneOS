@@ -139,10 +139,15 @@ public final class AnonVpnRoute {
         // 1. Snapshot which VPN app each folder has set up and connected, one Vpn lock at a time.
         SparseArray<String> active = new SparseArray<>();
         SparseArray<String> prepared = new SparseArray<>();
+        // Main side: which users have a VPN app set up (consented), whether or not it's up now.
+        SparseArray<String> mainSetUp = new SparseArray<>();
         for (Vpn v : all) {
             int user = v.anonUserId();
-            if (!isFolder(um, user)) continue;
             String[] pkgs = v.anonPackages();
+            if (!isFolder(um, user)) {
+                if (pkgs[0] != null) mainSetUp.put(user, pkgs[0]);
+                continue;
+            }
             if (pkgs[0] != null) prepared.put(user, pkgs[0]);
             if (pkgs[1] != null) active.put(user, pkgs[1]);
         }
@@ -157,10 +162,15 @@ public final class AnonVpnRoute {
             UserHandle parent = um.getProfileParent(UserHandle.of(user));
             Vpn owner = parent == null ? null : vpnOf(parent.getIdentifier());
             int net = owner == null ? 0 : owner.anonNetId();
-            if (net == 0 && owner != null && owner.getAlwaysOnPackage() != null) {
-                // The main VPN is meant to be on but isn't up: the folder's tunnel goes nowhere.
+            if (net == 0 && owner != null && (owner.getAlwaysOnPackage() != null
+                    || mainSetUp.get(owner.anonUserId()) != null)) {
+                // The main side has a VPN set up (always-on or not) but it isn't up: it dropped,
+                // crashed or is reconnecting. The folder's tunnel goes nowhere rather than out on
+                // the bare network (docs/design/VPN.md: fails closed while the switch is on).
                 net = INetd.UNREACHABLE_NET_ID;
             }
+            // Only when the main side has no VPN at all (none ever set up, or turned off in
+            // Settings, which clears it) does the folder's VPN go out directly, as on stock Android.
             if (net == 0) continue;
             if (carried.length() > 0) carried.append(',');
             carried.append(v.anonOwnerUid()).append(':').append(net);
