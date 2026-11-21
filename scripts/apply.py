@@ -770,10 +770,34 @@ def copy_ours(tree):
         if (dst.exists() or dst.is_symlink()) and not (dst / OURS).is_file():
             raise HookError(f"{dst.relative_to(tree)} exists and isn't ours; move it away first")
     for dst, origin in copies.items():
-        if dst.exists():
-            shutil.rmtree(dst)
-        shutil.copytree(origin, dst, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        (dst / OURS).write_text("Copied by AnonpheneOS scripts/apply.py; edit the repo's copy.\n")
+        sync_copy(origin, dst)
+        marker = dst / OURS
+        text = "Copied by AnonpheneOS scripts/apply.py; edit the repo's copy.\n"
+        if not marker.is_file() or marker.read_text() != text:
+            marker.write_text(text)
+
+
+def sync_copy(origin, dst):
+    """Makes dst a copy of origin. A changed file is written fresh, so it's newer than what the
+    last build made from it (copying the repo's timestamps let the build skip it); an unchanged
+    one is left alone so it isn't rebuilt; a file gone from origin is removed."""
+    skip = lambda p: "__pycache__" in p.parts or p.suffix == ".pyc"
+    want = {f.relative_to(origin) for f in origin.rglob("*") if f.is_file() and not skip(f)}
+    if dst.exists():
+        for f in sorted(dst.rglob("*"), reverse=True):
+            rel = f.relative_to(dst)
+            if f.is_file() and rel not in want and f.name != OURS:
+                f.unlink()
+            elif f.is_dir() and not any(f.iterdir()):
+                f.rmdir()
+    for rel in sorted(want):
+        src, out = origin / rel, dst / rel
+        data = src.read_bytes()
+        if out.is_file() and out.read_bytes() == data:
+            continue
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(data)
+        shutil.copymode(src, out)
 
 
 RECORD = ".anonphene-hooked"

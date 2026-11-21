@@ -394,6 +394,26 @@ class Apply(unittest.TestCase):
             self.assertEqual(npm.stat().st_mtime_ns, 1)
             self.assertNotIn("AnonOldHelper", rec.read_text())
 
+    def test_changed_copies_are_newer_than_the_last_build(self):
+        with tempfile.TemporaryDirectory() as d:
+            make_tree(d)
+            apply.apply(d)
+            t = Path(d)
+            rc = t / "vendor/anonphene/init/anonphene.rc"
+            same = t / "vendor/anonphene/Android.bp"
+            os.utime(same, ns=(5, 5))
+            # As if this AnonpheneOS were older: the build output is newer than the copy...
+            rc.write_text("older rc\n")
+            os.utime(rc, ns=(5, 5))
+            stale = t / "vendor/anonphene/gone.txt"
+            stale.write_text("no longer in the repo\n")
+            apply.apply(d)
+            # ...so the new copy must be fresh, whatever the repo file's own timestamp.
+            self.assertEqual(rc.read_text(), (apply.HERE / "vendor/anonphene/init/anonphene.rc").read_text())
+            self.assertGreater(rc.stat().st_mtime_ns, 5)
+            self.assertEqual(same.stat().st_mtime_ns, 5)  # unchanged: left alone
+            self.assertFalse(stale.exists())
+
     @unittest.skipUnless(shutil.which("git"), "needs git")
     def test_failed_anchor_leaves_older_hooks(self):
         with tempfile.TemporaryDirectory() as d:

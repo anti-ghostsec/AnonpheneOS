@@ -26,6 +26,32 @@ allow init {
     apex_tethering_data_file
 }:dir relabelto;
 
+# Before mounting, init's `rm -rf` (run as toolbox) empties what an older build or a crash left
+# on flash in those folders, so no history stays under the RAM filesystems. Android lets
+# toolbox remove system_data_file folders already; these are the others.
+allow toolbox {
+    tombstone_data_file
+    anr_data_file
+    dropbox_data_file
+    misc_logd_file
+    perfetto_traces_data_file
+    heapdump_data_file
+    bootstat_data_file
+    stats_data_file
+    apex_tethering_data_file
+}:dir { rmdir rw_dir_perms };
+allow toolbox {
+    tombstone_data_file
+    anr_data_file
+    dropbox_data_file
+    misc_logd_file
+    perfetto_traces_data_file
+    heapdump_data_file
+    bootstat_data_file
+    stats_data_file
+    apex_tethering_data_file
+}:file { getattr unlink };
+
 # Secure Folder VPN chaining (docs/design/VPN.md): system_server publishes which VPN carries
 # the folder VPN's tunnel; netd reads it for VPN apps' protected sockets. Nobody else may.
 system_internal_prop(anon_vpn_prop)
